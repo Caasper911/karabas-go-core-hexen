@@ -3,8 +3,8 @@
 /*
  doom_soc.v
 
- The Doom machine without the board glue: VexRiscv (rv32im, I$ 16K, D$ 16K, wishbone), the SDRAM
- (doom_sdram), the SRAM (doom_sram), the MMIO registers, the loader. One clock (clk, 75 MHz).
+ The Doom machine without the board glue: VexRiscv (rv32im, I$ 32K, D$ 32K, wishbone), the SDRAM
+ (doom_sdram), the SRAM (doom_sram), the MMIO registers, the loader. One clock (clk, 75 MHz; Mini G 875 / 11 = 79.545 MHz: CLK_NUM / CLK_DEN).
 
  Memory map of the CPU (docs/PLAN.md, src/fw/mmio.h):
    0x00000000 SRAM 4 MB (the frame 0x3f0000)       0x10000000 SDRAM 32 MB (program 0, WAD 0xc00000)
@@ -39,7 +39,9 @@
 */
 module doom_soc #(
 	parameter SDRAM_INIT_CLOCKS = 15'd16000,
-	parameter MS_DIV = 17'd75000,         // clocks per millisecond
+	// the clock in MHz = CLK_NUM / CLK_DEN (75 / 1; 875 / 11 = 79.545 MHz): US and MS count exactly
+	parameter [9:0] CLK_NUM = 10'd75,
+	parameter [9:0] CLK_DEN = 10'd1,
 	parameter [31:0] RESET_VECTOR = 32'h10000000
 ) (
 	input wire clk,
@@ -253,7 +255,7 @@ doom_sram sram (
 
 reg [31:0] cycles = 32'd0;
 reg [31:0] ms = 32'd0;
-reg [16:0] ms_cnt = 17'd0;
+reg [9:0] ms_cnt = 10'd0;                 // microseconds of the current millisecond
 reg [31:0] kbd_n = 32'd0;
 reg signed [11:0] ms_dx = 12'sd0, ms_dy = 12'sd0;
 reg [7:0] ms_btn = 8'd0;
@@ -270,7 +272,8 @@ assign aud_we = d_req && d_io && !io_ack && !cpu_reset && d_we && aud_sel;
 assign aud_off = io_off14;
 assign aud_wd = d_dat_o;
 reg [31:0] us = 32'd0, tcmp = 32'd0;
-reg [6:0] us_div = 7'd0;
+reg [9:0] us_div = 10'd0;                 // + CLK_DEN per clock, a microsecond at CLK_NUM
+wire us_tick = us_div + CLK_DEN >= CLK_NUM;
 reg ten = 1'b0;
 
 always @(posedge clk) begin
@@ -302,21 +305,23 @@ always @(posedge clk) begin
 	timer_irq <= ten && !cpu_reset && $signed(us - tcmp) >= 0;
 	if (cpu_reset) begin
 		us <= 32'd0;
-		us_div <= 7'd0;
+		us_div <= 10'd0;
 		ten <= 1'b0;
-	end else if (us_div == 7'd74) begin
-		us_div <= 7'd0;
+	end else if (us_tick) begin
+		us_div <= us_div + CLK_DEN - CLK_NUM;
 		us <= us + 32'd1;
 	end else
-		us_div <= us_div + 7'd1;
+		us_div <= us_div + CLK_DEN;
 	if (cpu_reset) begin
 		cycles <= 32'd0;
 		ms <= 32'd0;
-		ms_cnt <= 17'd0;
+		ms_cnt <= 10'd0;
 	end else begin
 		cycles <= cycles + 32'd1;
-		if (ms_cnt == MS_DIV - 17'd1) begin ms_cnt <= 17'd0; ms <= ms + 32'd1; end
-		else ms_cnt <= ms_cnt + 17'd1;
+		if (us_tick) begin
+			if (ms_cnt == 10'd999) begin ms_cnt <= 10'd0; ms <= ms + 32'd1; end
+			else ms_cnt <= ms_cnt + 10'd1;
+		end
 	end
 	if (kbd_wr) kbd_n <= kbd_n + 32'd1;
 	if (ms_wr) begin

@@ -20,7 +20,10 @@
  saturated: snd_l / snd_r for the DAC and HDMI (sampled by the top). Levels: SFX x1, OPL x1 (opl3_fm
  out / 4 + / 8 as core-zxuno), ADC x adc_gain / 2 (the SAM2695 is quiet: x2 by default).
 */
-module doom_audio (
+module doom_audio #(
+	parameter CLK_HZ = 75000000,          // clk (kg_midi_tx: 31250 baud)
+	parameter [32:0] OPL_STEP = 33'd2847048 // 49716 * 2^32 / clk: 2847048 at 75 MHz, 2684359 at 875/11 MHz
+) (
 	input wire clk,
 	input wire reset,
 
@@ -49,7 +52,7 @@ reg [8:0] opl_addr = 9'd0;
 reg opl_wtgl = 1'b0, opl_ttgl = 1'b0;
 reg [16:0] opl_word = 17'd0;
 reg [31:0] opl_ph = 32'd0;
-wire [32:0] opl_ph_n = { 1'b0, opl_ph } + 33'd2847048;   // 49716 Hz at 75 MHz
+wire [32:0] opl_ph_n = { 1'b0, opl_ph } + OPL_STEP;      // 49716 Hz
 wire signed [19:0] fm_l, fm_r;
 reg signed [15:0] opl_l = 16'sd0, opl_r = 16'sd0;
 
@@ -83,7 +86,7 @@ opl3_fm fm (
 
 // ------------------------------------------------------------------ MIDI (clk)
 
-kg_midi_tx #(.CLK_HZ(75000000)) midi (
+kg_midi_tx #(.CLK_HZ(CLK_HZ)) midi (
 	.clk(clk),
 	.data(io_wd[7:0]),
 	.wr(io_we && io_off == 14'h0068),
