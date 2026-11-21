@@ -226,7 +226,7 @@ $(HX)/m_config.o: HXCFLAGS += -DFEATURE_SOUND
 $(HX)/w_file_kg.o: w_file_kg.c mmio.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
 $(HX)/kg_hexen_%.o: hexen/kg_hexen_%.c | $(HX)
-	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
+	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(HX)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(HX)/kg_r_draw_hw.o: hexen/r_draw.c htic/kg_htic.h mmio.h | $(HX)
