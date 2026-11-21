@@ -1,4 +1,4 @@
-/* Ф1 (karabas): the platform of Heretic on the board (src/rtl/doom_soc.v MMIO), with kg_htic.c
+/* Ф1 (karabas): the platform of Heretic (and of Hexen: KG_HEXEN, KG_GAME "hexen") on the board (src/rtl/doom_soc.v MMIO), with kg_htic.c
  * (timer, video). As kg_hw.c of Doom (doomgeneric), for chocolate-doom 2.3.0:
  * - Waits for the WAD (the FL item "WAD", MMIO_WADSIZE != 0) with a test picture and the log, then
  *   starts Heretic (D_DoomMain).
@@ -7,7 +7,8 @@
  *   names); the sums of MMIO_MOUSE -> ev_mouse; pads (JOY, both ports): arrows, A fire, B use,
  *   C run, Start Enter (use the artifact / the menu), X Esc, Y / Z inventory right / left,
  *   Mode next weapon. The keys of Heretic stay its defaults ([ ] Enter inventory, PgUp / Ins /
- *   Home fly, PgDn / Del / End look).
+ *   Home fly, PgDn / Del / End look). Hexen: the pad C is jump (key_jump, the keyboard / ), no run
+ *   on the pad (Shift on the keyboard).
  * - OSD Controls (MMIO_SW 23..16): 0 Classic (arrows, mouse: left fire, right strafe, middle
  *   forward), 1 WASD (W / S forward / back, A / D strafe, E use outside the menu; mouse: left
  *   fire, right use). OSD Mouse move (31..24): 0 off (the mouse only turns), 1 on.
@@ -41,7 +42,17 @@
 #define KG_KEY_NEXTWEAPON 0xfd
 #define KG_KEY_PREVWEAPON 0xfe
 
-extern boolean MenuActive;            /* heretic/mn_menu.c */
+extern boolean MenuActive;            /* heretic/mn_menu.c, hexen/mn_menu.c */
+#ifndef KG_GAME
+#define KG_GAME "heretic"
+#endif
+#ifdef KG_HEXEN
+#define KG_TITLE "Hexen"
+#define KG_PAD_C key_jump
+#else
+#define KG_TITLE "Heretic"
+#define KG_PAD_C key_speed
+#endif
 void D_DoomMain(void);
 void kg_htic_chat_macros(void);           /* kg_htic.c */
 
@@ -212,7 +223,7 @@ void I_StartTic(void) {
     if (j != last_joy) {
         /* bits: 1 up, 2 down, 3 left, 4 right, 5 Start, 6 A, 7 B, 8 C, 9 X, 10 Y, 11 Z, 12 Mode */
         const int jk[13] = { 0, KEY_UPARROW, KEY_DOWNARROW, KEY_LEFTARROW, KEY_RIGHTARROW,
-                             KEY_ENTER, key_fire, key_use, key_speed, KEY_ESCAPE,
+                             KEY_ENTER, key_fire, key_use, KG_PAD_C, KEY_ESCAPE,
                              key_invright, key_invleft, KG_KEY_NEXTWEAPON };
         for (int b = 1; b < 13; b++)
             if (((j ^ last_joy) >> b) & 1) post_key((j >> b) & 1, jk[b], b == 5 ? KEY_ENTER : 0);
@@ -246,7 +257,7 @@ static void wait_wad(void) {
     for (int i = 0; i < 256; i++) MMIO_PAL(i) = ((i & 0xe0) << 16) | ((i & 0x1c) << 11) | ((i & 0x03) << 6);
     for (int y = 0; y < 200; y++)
         for (int x = 0; x < 320; x++) fb[y * 320 + x] = (uint8_t)((y / 25) * 32 + x / 10);
-    printf("Karabas Heretic: load a WAD (Menu+F1)\n");
+    printf("Karabas " KG_TITLE ": load a WAD (Menu+F1)\n");
     for (int i = 0; i < 4; i++) draw_char(fb, 8 * i, 192, "WAD?"[i], 0xff);
     draw_log(fb, 0xff);
     MMIO_FRAME = 0;
@@ -257,7 +268,7 @@ int main(void) {
 #ifndef HWARGS
 #define HWARGS ""
 #endif
-    static char args[] = "heretic -iwad heretic.wad -mb 8 " HWARGS;
+    static char args[] = KG_GAME " -iwad " KG_GAME ".wad -mb 8 " HWARGS;
     static char *av[16];
     int n = 0;
     char *s = args;

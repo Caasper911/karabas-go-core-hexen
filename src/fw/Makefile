@@ -240,6 +240,51 @@ $(HX)/hexen-$(MB).elf: $(HXOBJ) htic/kg_htic.c syscalls.c crt0.S mmio.h $(B)/lin
 $(HX)/hexen-$(MB).bin: $(HX)/hexen-$(MB).elf
 	$(CROSS)objcopy -O binary $< $@
 
+# Ф1: the board firmware of Hexen (roms/hexen.bin of the .kg): the board platform of Heretic
+# (htic/kg_htic_hw.c + kg_htic.c with KG_HW) for KG_HEXEN / KG_GAME "hexen"; KG_HERETIC too (the
+# chocolate sound API of i_kgsound.c / i_kgmusic.c); kg_save.c keeps hexen.cfg / chocolate-hexen.cfg
+# (the savegames are RAM files until Ф2); hexen/r_draw.c as HXDRAW=kg: build-hexen-hw-$(ARCH)$(OPT)/
+XH      := build-hexen-hw-$(ARCH)$(subst -,,$(OPT))
+XHCFLAGS := -march=$(ARCH)_zicsr -mabi=ilp32 $(OPT) -std=gnu11 -g -fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -ffunction-sections -fdata-sections -w \
+           -D_DEFAULT_SOURCE -DFEATURE_SOUND -DKG_HW -DKG_HERETIC -DKG_HEXEN '-DKG_GAME="hexen"' \
+           -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src -I$(CHOC)/opl
+XHOBJ   := $(addprefix $(XH)/,$(addsuffix .o,$(CHOC_COMMON) i_oplmusic midifile mus2mid opl opl_queue \
+           $(addprefix x_,$(filter-out r_draw,$(HEXEN))))) \
+           $(addprefix $(XH)/,w_file_kg.o kg_irq.o opl_kg.o i_kgsound.o i_kgmusic.o kg_save.o sdl_compat.o trap.o \
+           kg_htic.o kg_r_draw.o kg_hexen_stubs.o)
+$(XH):
+	mkdir -p $@
+$(XH)/%.o: $(CHOC)/src/%.c htic/kg_htic.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/%.o: $(CHOC)/opl/%.c | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/x_%.o: $(CHOC)/src/hexen/%.c htic/kg_htic.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(XH)/%.o: %.c mmio.h kg_irq.h kg_save.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/sdl_compat.o: compat/sdl_compat.c compat/SDL.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/kg_htic.o: htic/kg_htic.c mmio.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(XH)/kg_hexen_stubs.o: hexen/kg_hexen_stubs.c | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/trap.o: trap.S | $(XH)
+	$(CROSS)gcc -march=$(ARCH)_zicsr -mabi=ilp32 -c $< -o $@
+
+hexen-hw: $(XH)/hexen-hw.bin
+.PHONY: $(XH)/hexen-hw.elf
+$(XH)/hexen-hw.elf: $(XHOBJ) htic/kg_htic_hw.c font8.h syscalls.c crt0_hw.S mmio.h $(B)/link-sdram.ld
+	$(CROSS)gcc $(XHCFLAGS) '-DHWARGS="$(HWARGS)"' -c htic/kg_htic_hw.c -o $(XH)/kg_htic_hw.o
+	$(CROSS)gcc $(XHCFLAGS) -c syscalls.c -o $(XH)/syscalls.o
+	$(CROSS)gcc $(ABI) -c crt0_hw.S -o $(XH)/crt0_hw.o
+	$(CROSS)gcc $(LDFLAGS) -Wl,--wrap=realloc -T $(B)/link-sdram.ld -Wl,-Map,$(XH)/hexen-hw.map -o $@ \
+	  $(XH)/crt0_hw.o $(XHOBJ) $(XH)/kg_htic_hw.o $(XH)/syscalls.o -lm
+	$(CROSS)size $@
+$(XH)/hexen-hw.bin: $(XH)/hexen-hw.elf
+	$(CROSS)objcopy -O binary $< $@
+
 clean:
 	rm -rf build-*
-.PHONY: all clean hw htic htic-hw hexen
+.PHONY: all clean hw htic htic-hw hexen hexen-hw

@@ -9,7 +9,10 @@
  * smaller). Without a save file (no SD card, an old firmware) nothing is kept, as before.
  * KG_HERETIC (core-heretic): magic KGHTICS1, slot 0 heretic.cfg and slot 1 chocolate-heretic.cfg,
  * 16 sectors each, slots 2 + n (hticsav<n>.hsg) from 33 + 335 n, 335 sectors (171520 bytes; the
- * vanilla limit is 196608). */
+ * vanilla limit is 196608).
+ * KG_HEXEN (core-hexen Ф1, with KG_HERETIC): magic KGHEXEN1, slot 0 hexen.cfg and slot 1
+ * chocolate-hexen.cfg; the savegames (hex<n>.hxs + a file per map of the hub) stay RAM files until
+ * Ф2 (no save slots here). */
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -25,7 +28,12 @@
 
 #define FILE_SECTORS 2048
 #define CFG_SECTORS  16
-#ifdef KG_HERETIC
+#ifdef KG_HEXEN
+#define CFGS         2
+#define SAVE_SECTORS 0
+static const char MAGIC[8] = "KGHEXEN1";
+static const char *const CFG_NAME[CFGS] = { "hexen.cfg", "chocolate-hexen.cfg" };
+#elif defined(KG_HERETIC)
 #define CFGS         2
 #define SAVE_SECTORS 335
 static const char MAGIC[8] = "KGHTICS1";
@@ -87,8 +95,10 @@ static int slot_of(const char *name) {
     const char *b = strrchr(name, '/');
     b = b ? b + 1 : name;
     for (int i = 0; i < CFGS; i++) if (!strcmp(b, CFG_NAME[i])) return i;
+#ifdef SAVE_PREFIX
     size_t p = sizeof SAVE_PREFIX - 1;
     if (!strncmp(b, SAVE_PREFIX, p) && b[p] >= '0' && b[p] <= '5' && !strcmp(b + p + 1, SAVE_EXT)) return CFGS + (b[p] - '0');
+#endif
     return -1;
 }
 
