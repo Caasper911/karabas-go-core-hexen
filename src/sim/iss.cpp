@@ -1,7 +1,7 @@
 // Ф0 fast RV32IM instruction-set simulator for the Doom bench firmware (from core-pico8 iss.cpp).
 // Memory: SRAM 4 MB at 0x00000000, SDRAM 32 MB at 0x10000000, MMIO at 0x80000000 (uncached).
 // No timing: MMIO_CYCLES = retired instructions, MMIO_MS = instructions / 50000. Cache model
-// (--icache/--dcache bytes, 32-byte lines, direct-mapped as VexRiscv 1-way, D$ write-through
+// (--icache/--dcache bytes, default 16K / 16K as the core since Hexen Ф0б, 32-byte lines, direct-mapped as VexRiscv 1-way, D$ write-through
 // without write allocate) counts per frame and per memory: I$ misses, D$ read misses, stores
 // (bytes / halfwords / words), so model.py can price each memory without Verilator.
 //
@@ -54,7 +54,7 @@ struct Cnt { uint64_t instr = 0, im[2] = {0, 0}, dm[2] = {0, 0}, st[2] = {0, 0},
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s fw.bin --org A [--wad f] [--max Minstr] [--icache B] [--dcache B] [--prof f] [--prof-from F]\n", argv[0]); return 2; }
     uint64_t max_instr = 20000ull * 1000 * 1000;
-    uint32_t icb = 4096, dcb = 4096, org = SDRAM_BASE;
+    uint32_t icb = 16384, dcb = 16384, org = SDRAM_BASE;
     const char *wad = 0;
     FILE *prof = 0;
     bool sampling = true;

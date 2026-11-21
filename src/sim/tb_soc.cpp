@@ -20,6 +20,8 @@
 #include <vector>
 #include "Vcpu.h"
 #include "verilated.h"
+// the Verilator of msys2 (Windows) links verilated.cpp that calls it
+double sc_time_stamp() { return 0; }
 
 static const uint32_t SRAM_SIZE = 4u << 20, SDRAM_BASE = 0x10000000u, SDRAM_SIZE = 32u << 20;
 static std::vector<uint8_t> sram(SRAM_SIZE), sdram(SDRAM_SIZE);
