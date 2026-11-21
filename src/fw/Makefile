@@ -200,6 +200,46 @@ $(HH)/heretic-hw.elf: $(HHOBJ) htic/kg_htic_hw.c font8.h syscalls.c crt0_hw.S mm
 $(HH)/heretic-hw.bin: $(HH)/heretic-hw.elf
 	$(CROSS)objcopy -O binary $< $@
 
+# Hexen (chocolate-doom 2.3.0 src/hexen + the common src/ files), the Ф0 bench build on the platform of Heretic:
+#   make hexen [ARCH=..] [OPT=..] [MB=..] [ARGS=..] -> build-hexen-$(ARCH)$(OPT)/hexen-$(MB).bin (LAYOUT sdram)
+# htic/kg_htic.c with KG_GAME "hexen" + hexen/kg_hexen_stubs.c (startup screen 640x480, CD music) +
+# hexen/kg_hexen_bench.c (zone peak; ARGS="-warp 1 -kgbench": the saves of a hub);
+# -fcommon: src/hexen defines some globals in two files (demoextend, ...).
+# HXDRAW kg (default): hexen/r_draw.c, the faster column / span drawers; up: the upstream r_draw.c.
+HX      := build-hexen-$(ARCH)$(subst -,,$(OPT))
+HXDRAW  ?= kg
+HEXEN   := $(notdir $(basename $(wildcard $(CHOC)/src/hexen/*.c)))
+HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(filter-out $(if $(filter kg,$(HXDRAW)),r_draw),$(HEXEN))))) $(HX)/w_file_kg.o \
+           $(HX)/kg_hexen_stubs.o $(HX)/kg_hexen_bench.o $(if $(filter kg,$(HXDRAW)),$(HX)/kg_r_draw.o)
+HXCFLAGS := $(ABI) $(OPT) -std=gnu11 -g -fcommon -ffunction-sections -fdata-sections -w -D_DEFAULT_SOURCE \
+           '-DKG_GAME="hexen"' -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src
+$(HX):
+	mkdir -p $@
+$(HX)/%.o: $(CHOC)/src/%.c htic/kg_htic.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
+$(HX)/x_%.o: $(CHOC)/src/hexen/%.c htic/kg_htic.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(HX)/m_config.o: HXCFLAGS += -DFEATURE_SOUND
+$(HX)/w_file_kg.o: w_file_kg.c mmio.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
+$(HX)/kg_hexen_%.o: hexen/kg_hexen_%.c | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
+$(HX)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+HXOPTS := $(HX)/opts-$(HXDRAW)-$(MB)-$(subst $(eval) ,_,$(ARGS))
+$(HXOPTS): | $(HX)
+	rm -f $(HX)/opts-*; touch $@
+hexen: $(HX)/hexen-$(MB).bin
+$(HX)/hexen-$(MB).elf: $(HXOBJ) htic/kg_htic.c syscalls.c crt0.S mmio.h $(B)/link-sdram.ld $(HXOPTS)
+	$(CROSS)gcc $(HXCFLAGS) '-DMB="$(MB)"' '-DARGS="$(ARGS)"' -c htic/kg_htic.c -o $(HX)/kg_htic.o
+	$(CROSS)gcc $(HXCFLAGS) -c syscalls.c -o $(HX)/syscalls.o
+	$(CROSS)gcc $(ABI) -c crt0.S -o $(HX)/crt0.o
+	$(CROSS)gcc $(LDFLAGS) -T $(B)/link-sdram.ld -Wl,-Map,$(HX)/hexen-$(MB).map -o $@ \
+	  $(HX)/crt0.o $(HXOBJ) $(HX)/kg_htic.o $(HX)/syscalls.o -lm
+	$(CROSS)size $@
+$(HX)/hexen-$(MB).bin: $(HX)/hexen-$(MB).elf
+	$(CROSS)objcopy -O binary $< $@
+
 clean:
 	rm -rf build-*
-.PHONY: all clean hw htic htic-hw
+.PHONY: all clean hw htic htic-hw hexen

@@ -25,7 +25,7 @@ void *_sbrk(ptrdiff_t incr) {
 
 #define WAD_FD 3
 #define RAM_FD0 4
-#define RAM_FILES 8
+#define RAM_FILES 32
 static uint32_t wad_pos;
 
 /* the WAD: any name ending in .wad (read only, in memory at WAD_BASE) */
@@ -36,6 +36,7 @@ int kg_is_wad(const char *name) {
 
 /* Ф2: files in RAM (lost at a reset): the MIDI of a song (i_oplmusic.c writes doom.mid and reads
    it back), default.cfg, savegames. One open handle per file. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 typedef struct { char name[64]; uint8_t *data; uint32_t size, cap, pos; int used, open, written; } ramfile_t;
@@ -48,6 +49,12 @@ int kg_save_load(const char *name, uint8_t *out, uint32_t cap) __attribute__((we
 int kg_save_store(const char *name, const uint8_t *data, uint32_t size) __attribute__((weak));
 void kg_save_remove(const char *name) __attribute__((weak));
 static ramfile_t rf[RAM_FILES];
+
+/* the bench: the RAM files and their sizes on the console */
+void kg_ramfiles_list(void) {
+    for (int i = 0; i < RAM_FILES; i++)
+        if (rf[i].used) printf("FILE %-24s %7lu\n", rf[i].name, (unsigned long) rf[i].size);
+}
 
 static ramfile_t *rf_find(const char *name) {
     for (int i = 0; i < RAM_FILES; i++) if (rf[i].used && !strcmp(rf[i].name, name)) return &rf[i];
