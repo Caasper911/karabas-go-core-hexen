@@ -87,6 +87,25 @@ static void draw_log(uint8_t *fb, uint8_t col) {
     }
 }
 
+/* the OSD item FPS (MMIO_SW 7..0 = 1): the frames of the last second in the top right corner of the
+   frame being finished (I_FinishUpdate, before the copy to the shown buffer); white on black, the
+   indices of the current palette. The game redraws the view each frame; a border (a smaller view)
+   may keep the digits until it is redrawn. */
+int I_GetPaletteIndex(int r, int g, int b);
+void kg_fps_overlay(uint8_t *fb) {
+    static uint32_t t0, n;
+    static int fps;
+    uint32_t now = MMIO_MS;
+    n++;
+    if (now - t0 >= 1000) { fps = (int) ((n * 1000 + (now - t0) / 2) / (now - t0)); n = 0; t0 = now; }
+    if ((MMIO_SW & 0xff) != 1 || !fb) return;
+    uint8_t black = (uint8_t) I_GetPaletteIndex(0, 0, 0), white = (uint8_t) I_GetPaletteIndex(255, 255, 255);
+    char s[3] = { fps > 99 ? '9' : '0' + fps / 10 % 10, fps > 99 ? '9' : '0' + fps % 10, 0 };
+    int x0 = 320 - 2 * 8 - 3, y0 = 1;
+    for (int y = y0 - 1; y < y0 + 9; y++) memset(fb + y * 320 + x0 - 1, black, 2 * 8 + 2);
+    for (int i = 0; i < 2; i++) draw_char(fb, x0 + 8 * i, y0, s[i], white);
+}
+
 /* the end: the log on the screen (called by _exit) */
 void kg_exit_screen(int code) {
     uint8_t *fb = (uint8_t *)FB_BASE;

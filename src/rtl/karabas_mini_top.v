@@ -21,7 +21,7 @@
  Soft switches (the index of the item in the osd of core.json):
    0 WAD (the FL item: its index is taken, no value)   1 Music (OPL3 / MIDI / Off, read by the CPU)
    2 Reset   3 Controls (Classic / WASD)   4 Mouse move (Off / On)
- The CPU reads them in MMIO SW: { sw 4, sw 3, sw 1, 0 } (Music 15..8, Controls 23..16, Mouse 31..24).
+ The CPU reads them in MMIO SW: { sw 4, sw 3, sw 1, sw 5 } (FPS 7..0, Music 15..8, Controls 23..16, Mouse 31..24).
 */
 
 module karabas_mini_top (
@@ -200,7 +200,7 @@ wire [1:0] ld_kind;
 wire [7:0] ld_slot, ld_data;
 wire [31:0] ld_addr;
 wire ld_start, ld_active, ld_end, ld_wr, ld_ready;
-wire [8*5-1:0] sw;
+wire [8*6-1:0] sw;
 wire [7:0] sdc_img_mounted, sdc_rd, sdc_wr, sdc_byte_in_data, sdc_byte_out_data, img_flush, bk_kind, bk_result;
 wire [63:0] sdc_img_size;
 wire [31:0] sdc_sector, bk_size;
@@ -221,7 +221,7 @@ wire [3:0] osd_py;
 wire [5:0] osd_pw;
 
 kg_mcu2 #(
-	.SW_N(5),
+	.SW_N(6),
 	.CS_FILTER(3),
 	.CAPS(16'h0012),     // bit 4: the core drives LD_READY, bit 1: backup RAM (the save file, doom_sd)
 	.ENABLE_OSD(1),
@@ -314,7 +314,7 @@ doom_soc soc (
 	.ld_kind(ld_kind), .ld_slot(ld_slot), .ld_start(ld_start), .ld_active(ld_active), .ld_end(ld_end),
 	.ld_addr(ld_addr), .ld_data(ld_data), .ld_wr(ld_wr), .ld_ready(ld_ready),
 	.kbd(kbd), .kbd_wr(kbd_wr), .ms_x(ms_x), .ms_y(ms_y), .ms_b(ms_b), .ms_wr(ms_wr), .joy_l(joy_l), .joy_r(joy_r),
-	.sw({ sw[4*8 +: 8], sw[3*8 +: 8], sw[1*8 +: 8], 8'd0 }), .aud_we(aud_we), .aud_off(aud_off), .aud_wd(aud_wd), .aud_rd(aud_rd),
+	.sw({ sw[4*8 +: 8], sw[3*8 +: 8], sw[1*8 +: 8], sw[5*8 +: 8] }), .aud_we(aud_we), .aud_off(aud_off), .aud_wd(aud_wd), .aud_rd(aud_rd),
 	.vid_req(vid_req), .vid_adr(vid_adr), .vid_len(vid_len), .vid_we(vid_we), .vid_wa(vid_wa), .vid_wd(vid_wd),
 	.vid_busy(vid_busy), .pal_we(pal_we), .pal_wa(pal_wa), .pal_wd(pal_wd), .frame_n(frame_n),
 	.disp_front(disp_front), .disp_shown(disp_shown),
