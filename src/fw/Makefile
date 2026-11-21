@@ -214,6 +214,8 @@ HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(fil
            $(HX)/kg_hexen_stubs.o $(HX)/kg_hexen_bench.o $(if $(filter kg,$(HXDRAW)),$(HX)/kg_r_draw.o) \
            $(if $(filter hw,$(HXDRAW)),$(HX)/kg_r_draw_hw.o)
 HXHWDRAW := $(if $(filter hw,$(HXDRAW)),-DKG_HWDRAW)
+# Ф1г: memcpy / memset by words (kg_mem.c) before libc
+HXOBJ   += $(HX)/kg_mem.o
 HXCFLAGS := $(ABI) $(OPT) -std=gnu11 -g -fcommon -ffunction-sections -fdata-sections -w -D_DEFAULT_SOURCE \
            '-DKG_GAME="hexen"' -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src
 $(HX):
@@ -227,6 +229,8 @@ $(HX)/w_file_kg.o: w_file_kg.c mmio.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
 $(HX)/kg_hexen_%.o: hexen/kg_hexen_%.c | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(HX)/kg_mem.o: kg_mem.c | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -fno-builtin -fno-tree-loop-distribute-patterns -c $< -o $@
 $(HX)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(HX)/kg_r_draw_hw.o: hexen/r_draw.c htic/kg_htic.h mmio.h | $(HX)
@@ -257,6 +261,7 @@ XHOBJ   := $(addprefix $(XH)/,$(addsuffix .o,$(CHOC_COMMON) i_oplmusic midifile 
            $(addprefix x_,$(filter-out r_draw,$(HEXEN))))) \
            $(addprefix $(XH)/,w_file_kg.o kg_irq.o opl_kg.o i_kgsound.o i_kgmusic.o kg_save.o sdl_compat.o trap.o \
            kg_htic.o kg_r_draw.o kg_hexen_stubs.o)
+XHOBJ   += $(XH)/kg_mem.o
 $(XH):
 	mkdir -p $@
 $(XH)/%.o: $(CHOC)/src/%.c htic/kg_htic.h | $(XH)
@@ -275,6 +280,8 @@ $(XH)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(XH)/kg_hexen_stubs.o: hexen/kg_hexen_stubs.c | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
+$(XH)/kg_mem.o: kg_mem.c | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -fno-builtin -fno-tree-loop-distribute-patterns -c $< -o $@
 $(XH)/trap.o: trap.S | $(XH)
 	$(CROSS)gcc -march=$(ARCH)_zicsr -mabi=ilp32 -c $< -o $@
 
