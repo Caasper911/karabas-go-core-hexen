@@ -146,10 +146,13 @@ void R_DrawTLColumn(void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl - centery) * fracstep;
 
+    // karabas: the pointers in locals (as R_DrawColumn)
+    const byte *source = dc_source, *colormap = dc_colormap;
+    const byte *tint = tinttable;
     do
     {
-        *dest = tinttable[*dest +
-                          (dc_colormap[dc_source[(frac >> FRACBITS) & 127]] <<
+        *dest = tint[*dest +
+                          (colormap[source[(frac >> FRACBITS) & 127]] <<
                            8)];
         dest += SCREENWIDTH;
         frac += fracstep;
@@ -188,10 +191,13 @@ void R_DrawAltTLColumn(void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl - centery) * fracstep;
 
+    // karabas: the pointers in locals (as R_DrawColumn)
+    const byte *source = dc_source, *colormap = dc_colormap;
+    const byte *tint = tinttable;
     do
     {
-        *dest = tinttable[((*dest) << 8)
-                          + dc_colormap[dc_source[(frac >> FRACBITS) & 127]]];
+        *dest = tint[((*dest) << 8)
+                          + colormap[source[(frac >> FRACBITS) & 127]]];
         dest += SCREENWIDTH;
         frac += fracstep;
     }
@@ -229,9 +235,12 @@ void R_DrawTranslatedColumn(void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl - centery) * fracstep;
 
+    // karabas: the pointers in locals (as R_DrawColumn)
+    const byte *source = dc_source, *colormap = dc_colormap;
+    const byte *translation = dc_translation;
     do
     {
-        *dest = dc_colormap[dc_translation[dc_source[frac >> FRACBITS]]];
+        *dest = colormap[translation[source[frac >> FRACBITS]]];
         dest += SCREENWIDTH;
         frac += fracstep;
     }
@@ -264,12 +273,16 @@ void R_DrawTranslatedTLColumn(void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl - centery) * fracstep;
 
+    // karabas: the pointers in locals (as R_DrawColumn)
+    const byte *source = dc_source, *colormap = dc_colormap;
+    const byte *tint = tinttable;
+    const byte *translation = dc_translation;
     do
     {
-        *dest = tinttable[((*dest) << 8)
+        *dest = tint[((*dest) << 8)
                           +
-                          dc_colormap[dc_translation
-                                      [dc_source[frac >> FRACBITS]]]];
+                          colormap[translation
+                                      [source[frac >> FRACBITS]]]];
         dest += SCREENWIDTH;
         frac += fracstep;
     }
@@ -303,10 +316,14 @@ void R_DrawTranslatedAltTLColumn (void)
 	fracstep = dc_iscale;
 	frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
+	// karabas: the pointers in locals (as R_DrawColumn)
+	const byte *source = dc_source, *colormap = dc_colormap;
+	const byte *tint = tinttable;
+	const byte *translation = dc_translation;
 	do
 	{
-		*dest = tinttable[*dest
-			+(dc_colormap[dc_translation[dc_source[frac>>FRACBITS]]]<<8)];
+		*dest = tint[*dest
+			+(colormap[translation[source[frac>>FRACBITS]]]<<8)];
 		dest += SCREENWIDTH;
 		frac += fracstep;
 	} while (count--);

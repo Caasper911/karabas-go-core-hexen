@@ -20,6 +20,9 @@
 #include <vector>
 #include <algorithm>
 #include "Vdoom_soc.h"
+#include "Vdoom_soc___024root.h"
+#include "Vdoom_soc_doom_soc.h"
+#include "Vdoom_soc_VexRiscv.h"
 #include "verilated.h"
 // the Verilator of msys2 (Windows) links verilated.cpp that calls it
 double sc_time_stamp() { return 0; }
@@ -30,11 +33,16 @@ static std::vector<uint8_t> sram(SRAM_SIZE), sdram(SDRAM_SIZE);
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s dump.bin [--frames N] [--max Mcycles]\n", argv[0]); return 2; }
     int stop_frames = -1, trace = 0;
+    FILE *prof = nullptr;                  // --prof file: the PC in execute and ra every 256 clocks (prof.py)
+    uint32_t us0 = 0;                      // --us N: US / MS of the dump (iss prints it), held during the reset
+                                           // (else the time of the resumed firmware jumps back)
     uint64_t max_cycles = 3000ull * 1000 * 1000;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--frames")) stop_frames = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--max")) max_cycles = strtoull(argv[++i], 0, 10) * 1000000ull;
         else if (!strcmp(argv[i], "--trace-sdram")) trace = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--prof")) prof = fopen(argv[++i], "w");
+        else if (!strcmp(argv[i], "--us")) us0 = strtoul(argv[++i], 0, 10);
     }
     FILE *f = fopen(argv[1], "rb");
     if (!f) { perror(argv[1]); return 2; }
@@ -87,6 +95,14 @@ int main(int argc, char **argv) {
         t->clk = 0; t->eval();
         t->clk = 1; t->eval();
         cyc++;
+        {   // also one clock after the reset: that edge still cleared them
+            static bool was_reset = true;
+            bool r = t->rootp->doom_soc->__PVT__cpu_reset;
+            if (us0 && (r || was_reset)) { t->rootp->doom_soc->__PVT__us = us0; t->rootp->doom_soc->__PVT__ms = us0 / 1000; }
+            was_reset = r;
+        }
+        if (prof && (cyc & 255) == 0) fprintf(prof, "%08x %08x\n", (unsigned) t->rootp->doom_soc->cpu->__PVT__decode_to_execute_PC,
+                                                      (unsigned) t->rootp->doom_soc->cpu->RegFilePlugin_regFile[1]);
         // outputs after edge cyc (registered): the command the SDRAM takes at this edge
         uint8_t c = (t->sdr_ras_n << 2) | (t->sdr_cas_n << 1) | t->sdr_we_n;
         int b = t->sdr_ba;
@@ -133,7 +149,7 @@ int main(int argc, char **argv) {
 
         t->disp_shown = t->disp_front;   // the video flips at once
         if (t->pal_we) pal[t->pal_wa] = t->pal_wd;
-        if (t->dbg_uart != last_uart) { last_uart = t->dbg_uart; }
+        if (t->dbg_uart != last_uart) { last_uart = t->dbg_uart; if (last_uart) { putchar(last_uart); fflush(stdout); } }
         if (t->frame_n != last_frame) {
             last_frame = t->frame_n;
             uint32_t h = 2166136261u;

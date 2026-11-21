@@ -359,7 +359,7 @@ int main(int argc, char **argv) {
             fwrite(sdram.data(), 1, SDRAM_SIZE, d);
             fwrite(&wad_size, 4, 1, d);
             fclose(d);
-            printf("DUMP %s frame %d pc %08x\n", dump_path, dump_at, pc);
+            printf("DUMP %s frame %d pc %08x us %llu\n", dump_path, dump_at, pc, (unsigned long long)(ninstr / 32));
             done = true;
         }
     }
