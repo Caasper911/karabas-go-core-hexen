@@ -23,6 +23,7 @@
 #include "h2def.h"
 #include "i_system.h"
 #include "r_local.h"
+#include "kg_hexen_r.h"
 
 // MACROS ------------------------------------------------------------------
 
@@ -542,9 +543,9 @@ void R_DrawPlanes(void)
                         }
                         angle = (viewangle + xtoviewangle[x])
                             >> ANGLETOSKYSHIFT;
-                        source = R_GetColumn(skyTexture, angle + offset)
+                        source = kg_getcolumn(skyTexture, angle + offset)
                             + SKYTEXTUREMIDSHIFTED + (dc_yl - centery);
-                        source2 = R_GetColumn(skyTexture2, angle + offset2)
+                        source2 = kg_getcolumn(skyTexture2, angle + offset2)
                             + SKYTEXTUREMIDSHIFTED + (dc_yl - centery);
                         dest = ylookup[dc_yl] + columnofs[x];
                         do
@@ -591,7 +592,7 @@ void R_DrawPlanes(void)
                         }
                         angle = (viewangle + xtoviewangle[x])
                             >> ANGLETOSKYSHIFT;
-                        source = R_GetColumn(skyTexture, angle + offset)
+                        source = kg_getcolumn(skyTexture, angle + offset)
                             + SKYTEXTUREMIDSHIFTED + (dc_yl - centery);
                         dest = ylookup[dc_yl] + columnofs[x];
                         do

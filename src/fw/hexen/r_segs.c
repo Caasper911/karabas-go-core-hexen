@@ -20,6 +20,7 @@
 #include "h2def.h"
 #include "i_system.h"
 #include "r_local.h"
+#include "kg_hexen_r.h"
 
 // OPTIMIZE: closed two sided lines as single sided
 
@@ -144,7 +145,7 @@ void R_RenderMaskedSegRange(drawseg_t * ds, int x1, int x2)
             // draw the texture
             //
             col = (column_t *) ((byte *)
-                                R_GetColumn(texnum,
+                                kg_getcolumn(texnum,
                                             maskedtexturecol[dc_x]) - 3);
 
             R_DrawMaskedColumn(col, -1);
@@ -268,7 +269,7 @@ void R_RenderSegLoop(void)
             dc_yl = yl;
             dc_yh = yh;
             dc_texturemid = midmid;
-            dc_source = R_GetColumn(midtex, texturecolumn);
+            dc_source = kg_getcolumn(midtex, texturecolumn);
             colfunc();
             cclip[x] = vheight;
             fclip[x] = -1;
@@ -286,7 +287,7 @@ void R_RenderSegLoop(void)
                     dc_yl = yl;
                     dc_yh = mid;
                     dc_texturemid = topmid;
-                    dc_source = R_GetColumn(toptex, texturecolumn);
+                    dc_source = kg_getcolumn(toptex, texturecolumn);
                     colfunc();
                     cclip[x] = mid;
                     cc = mid;
@@ -317,7 +318,7 @@ void R_RenderSegLoop(void)
                     dc_yl = mid;
                     dc_yh = yh;
                     dc_texturemid = bottommid;
-                    dc_source = R_GetColumn(bottomtex, texturecolumn);
+                    dc_source = kg_getcolumn(bottomtex, texturecolumn);
                     colfunc();
                     fclip[x] = mid;
                 }

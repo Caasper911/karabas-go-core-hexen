@@ -210,14 +210,14 @@ $(HH)/heretic-hw.bin: $(HH)/heretic-hw.elf
 HX      := build-hexen-$(ARCH)$(subst -,,$(OPT))
 HXDRAW  ?= kg
 HEXEN   := $(notdir $(basename $(wildcard $(CHOC)/src/hexen/*.c)))
-HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(filter-out $(if $(filter kg hw,$(HXDRAW)),r_draw r_segs r_plane),$(HEXEN))))) $(HX)/w_file_kg.o \
+HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(filter-out $(if $(filter kg hw,$(HXDRAW)),r_draw r_segs r_plane r_things),$(HEXEN))))) $(HX)/w_file_kg.o \
            $(HX)/kg_hexen_stubs.o $(HX)/kg_hexen_bench.o $(if $(filter kg,$(HXDRAW)),$(HX)/kg_r_draw.o) \
            $(if $(filter hw,$(HXDRAW)),$(HX)/kg_r_draw_hw.o)
 HXHWDRAW := $(if $(filter hw,$(HXDRAW)),-DKG_HWDRAW)
 # Ф1г: memcpy / memset by words (kg_mem.c) before libc
 HXOBJ   += $(HX)/kg_mem.o
 # Ф1г: hexen/r_segs.c (R_RenderSegLoop in locals) with the kg / hw drawers
-HXOBJ   += $(if $(filter kg hw,$(HXDRAW)),$(HX)/kg_r_segs.o $(HX)/kg_r_plane$(if $(filter hw,$(HXDRAW)),_hw).o)
+HXOBJ   += $(if $(filter kg hw,$(HXDRAW)),$(HX)/kg_r_segs.o $(HX)/kg_r_plane$(if $(filter hw,$(HXDRAW)),_hw).o $(HX)/kg_r_things$(if $(filter hw,$(HXDRAW)),_hw).o)
 HXCFLAGS := $(ABI) $(OPT) -std=gnu11 -g -fcommon -ffunction-sections -fdata-sections -w -D_DEFAULT_SOURCE \
            '-DKG_GAME="hexen"' -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src
 $(HX):
@@ -231,11 +231,15 @@ $(HX)/w_file_kg.o: w_file_kg.c mmio.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
 $(HX)/kg_hexen_%.o: hexen/kg_hexen_%.c | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
-$(HX)/kg_r_segs.o: hexen/r_segs.c htic/kg_htic.h | $(HX)
+$(HX)/kg_r_segs.o: hexen/r_segs.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
-$(HX)/kg_r_plane.o: hexen/r_plane.c htic/kg_htic.h | $(HX)
+$(HX)/kg_r_plane.o: hexen/r_plane.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
-$(HX)/kg_r_plane_hw.o: hexen/r_plane.c htic/kg_htic.h | $(HX)
+$(HX)/kg_r_plane_hw.o: hexen/r_plane.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -DKG_HWDRAW -I$(CHOC)/src/hexen -c $< -o $@
+$(HX)/kg_r_things.o: hexen/r_things.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(HX)/kg_r_things_hw.o: hexen/r_things.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -DKG_HWDRAW -I$(CHOC)/src/hexen -c $< -o $@
 $(HX)/kg_mem.o: kg_mem.c | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -fno-builtin -fno-tree-loop-distribute-patterns -c $< -o $@
@@ -266,10 +270,10 @@ XHCFLAGS := -march=$(ARCH)_zicsr -mabi=ilp32 $(OPT) -std=gnu11 -g -fcommon -Wno-
            -D_DEFAULT_SOURCE -DFEATURE_SOUND -DKG_HW -DKG_HERETIC -DKG_HEXEN -DKG_HWDRAW '-DKG_GAME="hexen"' \
            -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src -I$(CHOC)/opl
 XHOBJ   := $(addprefix $(XH)/,$(addsuffix .o,$(CHOC_COMMON) i_oplmusic midifile mus2mid opl opl_queue \
-           $(addprefix x_,$(filter-out r_draw r_segs r_plane,$(HEXEN))))) \
+           $(addprefix x_,$(filter-out r_draw r_segs r_plane r_things,$(HEXEN))))) \
            $(addprefix $(XH)/,w_file_kg.o kg_irq.o opl_kg.o i_kgsound.o i_kgmusic.o kg_save.o sdl_compat.o trap.o \
            kg_htic.o kg_r_draw.o kg_hexen_stubs.o)
-XHOBJ   += $(XH)/kg_mem.o $(XH)/kg_r_segs.o $(XH)/kg_r_plane.o
+XHOBJ   += $(XH)/kg_mem.o $(XH)/kg_r_segs.o $(XH)/kg_r_plane.o $(XH)/kg_r_things.o
 $(XH):
 	mkdir -p $@
 $(XH)/%.o: $(CHOC)/src/%.c htic/kg_htic.h | $(XH)
@@ -288,9 +292,11 @@ $(XH)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(XH)/kg_hexen_stubs.o: hexen/kg_hexen_stubs.c | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -c $< -o $@
-$(XH)/kg_r_segs.o: hexen/r_segs.c htic/kg_htic.h | $(XH)
+$(XH)/kg_r_segs.o: hexen/r_segs.c hexen/kg_hexen_r.h htic/kg_htic.h | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
-$(XH)/kg_r_plane.o: hexen/r_plane.c htic/kg_htic.h | $(XH)
+$(XH)/kg_r_plane.o: hexen/r_plane.c hexen/kg_hexen_r.h htic/kg_htic.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(XH)/kg_r_things.o: hexen/r_things.c hexen/kg_hexen_r.h htic/kg_htic.h | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(XH)/kg_mem.o: kg_mem.c | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -fno-builtin -fno-tree-loop-distribute-patterns -c $< -o $@
