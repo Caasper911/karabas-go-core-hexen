@@ -23,12 +23,31 @@
 void G_SaveGame(int slot, char *description);
 void G_TeleportNewMap(int map, int position);
 void kg_ramfiles_list(void);
+void kg_ramfiles_foreach(void (*fn)(const char *name, const uint8_t *data, uint32_t size));
+
+/* Ф2: the savegames packed by kg_lz (and unpacked back, compared) */
+#include <string.h>
+#include "kg_lz.h"
+static uint32_t lz_raw, lz_packed;
+static void lz_one(const char *name, const uint8_t *data, uint32_t size) {
+    uint8_t *p = malloc(size + size / 128 + 16), *u = malloc(size + 16);
+    uint32_t n = kg_lz_pack(data, size, p);
+    uint32_t m = kg_lz_unpack(p, n, u, size + 16);
+    printf("LZ %-24s %7lu -> %6lu %s\n", name, (unsigned long) size, (unsigned long) n,
+           (m == size && !memcmp(u, data, size)) ? "ok" : "BAD");
+    lz_raw += size; lz_packed += n;
+    free(p); free(u);
+}
 
 static int zone_peak, zone_peak_tic, last_tic = -1, bench, spin;
 
 static void kg_hexen_bench_exit(void) {
     printf("ZONE peak %d of %u bytes at tic %d\n", zone_peak, Z_ZoneSize(), zone_peak_tic);
-    if (bench) kg_ramfiles_list();
+    if (bench) {
+        kg_ramfiles_list();
+        kg_ramfiles_foreach(lz_one);
+        printf("LZ total %lu -> %lu\n", (unsigned long) lz_raw, (unsigned long) lz_packed);
+    }
 }
 
 static const struct { int tic, op, arg; } steps[] = {

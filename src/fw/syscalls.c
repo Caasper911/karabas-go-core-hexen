@@ -25,7 +25,7 @@ void *_sbrk(ptrdiff_t incr) {
 
 #define WAD_FD 3
 #define RAM_FD0 4
-#define RAM_FILES 32
+#define RAM_FILES 64
 static uint32_t wad_pos;
 
 /* the WAD: any name ending in .wad (read only, in memory at WAD_BASE) */
@@ -48,12 +48,21 @@ int kg_save_size(const char *name) __attribute__((weak));
 int kg_save_load(const char *name, uint8_t *out, uint32_t cap) __attribute__((weak));
 int kg_save_store(const char *name, const uint8_t *data, uint32_t size) __attribute__((weak));
 void kg_save_remove(const char *name) __attribute__((weak));
+/* Hexen Ф2 (kg_save_fs.c): a kept file is dropped from RAM after its close (the SD card has it; Hexen
+   reads and writes many files per save, they must not pile up in RAM) unless it did not fit */
+extern const int kg_save_drop __attribute__((weak));
 static ramfile_t rf[RAM_FILES];
 
 /* the bench: the RAM files and their sizes on the console */
 void kg_ramfiles_list(void) {
     for (int i = 0; i < RAM_FILES; i++)
         if (rf[i].used) printf("FILE %-24s %7lu\n", rf[i].name, (unsigned long) rf[i].size);
+}
+
+/* the bench: each RAM file to a function */
+void kg_ramfiles_foreach(void (*fn)(const char *name, const uint8_t *data, uint32_t size)) {
+    for (int i = 0; i < RAM_FILES; i++)
+        if (rf[i].used) fn(rf[i].name, rf[i].data, rf[i].size);
 }
 
 static ramfile_t *rf_find(const char *name) {
@@ -152,7 +161,13 @@ int _close(int fd) {
     ramfile_t *f = rf_fd(fd);
     if (f) {
         f->open = 0;
-        if (f->written && kg_save_store && kg_save_kept(f->name)) kg_save_store(f->name, f->data, f->size);
+        int kept = kg_save_kept && kg_save_kept(f->name), stored = 0;
+        if (f->written && kept) stored = kg_save_store(f->name, f->data, f->size);
+        if (kept && &kg_save_drop && kg_save_drop && (!f->written || stored)) {
+            free(f->data);
+            memset(f, 0, sizeof *f);
+            return 0;
+        }
         f->written = 0;
         return 0;
     }
