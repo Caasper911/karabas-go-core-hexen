@@ -1,8 +1,9 @@
-# Doom core: the ISE 14.7 flow of the boards (as core-cpc) and the firmware ROM.
+# Heretic core (the Doom core RTL): the ISE 14.7 flow of the boards (as core-cpc) and the firmware ROM.
 #
 #   make minig           a board: <board>-xst (.ngc), <board>-impl (.bin), <board>-core (.kg)
 #   make minig-report    LUTs, slices, block RAMs and the timing result of the last build
-#   make rom             the program ROM of the .kg (roms/doom.bin from src/fw, LAYOUT=sdram)
+#   make rom             the program ROM of the .kg (roms/heretic.bin from src/fw htic-hw, LAYOUT=sdram)
+#   make kg              heretic.kg from the .bin files in git and roms/heretic.bin (no ISE: the RTL is Doom's)
 #   make clean           the intermediate files (not the .bin / .kg files)
 #
 # Inputs per board: karabas_<board>.prj (the shared modules as "../modules/rtl/...", rtl/), .xst, .ut, .ucf.
@@ -17,7 +18,16 @@ SHELL = /bin/bash
 
 XIL = source $(ISE_SETTINGS) > /dev/null;
 
-KG = doom.kg
+KG = heretic.kg
+# make_core.py is a symlink to karabas-go-tools; without symlinks (git on Windows) a text file with its target
+MAKE_CORE := $(shell test -L make_core.py || ! head -c 2 make_core.py | grep -q '\.\.' && echo make_core.py || cat make_core.py)
+PYTHON ?= python3
+ifneq ($(filter MINGW% MSYS%,$(shell uname -s)),)
+# msys make passes no LOCALAPPDATA / USERPROFILE to Windows programs: the python of the Python install
+# manager then installed a runtime into the current dir
+export LOCALAPPDATA := $(shell cygpath -w -F 0x1c)
+export USERPROFILE := $(shell cygpath -w -F 0x28)
+endif
 JSON = core.json
 
 # map / par options (cost table 2 by default, the rule of all the cores)
@@ -29,15 +39,19 @@ PAR = -ol high -xe c -mt 4
 
 INCLUDES = $(wildcard ../modules/rtl/mcu/*.vh)
 
-.PHONY: all clean rom $(BOARDS) $(BOARDS:=-xst) $(BOARDS:=-impl) $(BOARDS:=-core) $(BOARDS:=-report)
+.PHONY: all clean rom kg $(BOARDS) $(BOARDS:=-xst) $(BOARDS:=-impl) $(BOARDS:=-core) $(BOARDS:=-report)
 
 all: $(BOARDS)
 
 prj_src = $(shell sed -n 's/^[a-z]* work "\(.*\)"/\1/p' $(1) 2>/dev/null)
 
 rom:
-	$(MAKE) -C fw hw
-	cp fw/build-hw-rv32imO2/doom-hw.bin roms/doom.bin
+	$(MAKE) -C fw htic-hw
+	cp fw/build-htic-hw-rv32imO2/heretic-hw.bin roms/heretic.bin
+
+kg: $(JSON) roms/heretic.bin
+	$(PYTHON) tools/check_osd.py $(JSON)
+	$(PYTHON) $(MAKE_CORE) $(JSON) $(KG)
 
 define board
 SRC_$(1) := $$(call prj_src,karabas_$(1).prj)
@@ -53,9 +67,9 @@ karabas_$(1).bin: karabas_$(1).ngc karabas_$(1).ucf karabas_$(1).ut
 	$(XIL) trce -intstyle ise -v 3 -s 2 -n 3 -fastpaths -xml karabas_$(1).twx karabas_$(1).ncd -o karabas_$(1).twr karabas_$(1).pcf -ucf karabas_$(1).ucf
 	$(XIL) bitgen -intstyle ise -f karabas_$(1).ut karabas_$(1).ncd
 
-kg_$(1).stamp: karabas_$(1).bin $(JSON) roms/doom.bin
-	python3 tools/check_osd.py $(JSON)
-	python3 make_core.py $(JSON) $(KG) --boards $(1)
+kg_$(1).stamp: karabas_$(1).bin $(JSON) roms/heretic.bin
+	$(PYTHON) tools/check_osd.py $(JSON)
+	$(PYTHON) $(MAKE_CORE) $(JSON) $(KG) --boards $(1)
 	touch $$@
 
 $(1): kg_$(1).stamp

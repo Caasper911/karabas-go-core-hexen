@@ -6,7 +6,10 @@
  * Layout, in 512-byte sectors: 0 the table (magic, then the size in bytes of each slot, 0 = no
  * file), slot 0 (default.cfg) from 1, 16 sectors; slot 1 + n (doomsav<n>.dsg) from 17 + 338 n,
  * 338 sectors (173056 bytes: the vanilla limit is 180224, the saves of the IWAD levels are far
- * smaller). Without a save file (no SD card, an old firmware) nothing is kept, as before. */
+ * smaller). Without a save file (no SD card, an old firmware) nothing is kept, as before.
+ * KG_HERETIC (core-heretic): magic KGHTICS1, slot 0 heretic.cfg and slot 1 chocolate-heretic.cfg,
+ * 16 sectors each, slots 2 + n (hticsav<n>.hsg) from 33 + 335 n, 335 sectors (171520 bytes; the
+ * vanilla limit is 196608). */
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -21,10 +24,23 @@
 #define SD_BUF(i)  MMIO_REG(0x1000 + 4 * (i))
 
 #define FILE_SECTORS 2048
-#define SLOTS        7
 #define CFG_SECTORS  16
+#ifdef KG_HERETIC
+#define CFGS         2
+#define SAVE_SECTORS 335
+static const char MAGIC[8] = "KGHTICS1";
+static const char *const CFG_NAME[CFGS] = { "heretic.cfg", "chocolate-heretic.cfg" };
+#define SAVE_PREFIX  "hticsav"
+#define SAVE_EXT     ".hsg"
+#else
+#define CFGS         1
 #define SAVE_SECTORS 338
 static const char MAGIC[8] = "KGDOOMS1";
+static const char *const CFG_NAME[CFGS] = { "default.cfg" };
+#define SAVE_PREFIX  "doomsav"
+#define SAVE_EXT     ".dsg"
+#endif
+#define SLOTS        (CFGS + 6)
 
 static int ready;
 static uint32_t table[SLOTS];
@@ -70,14 +86,16 @@ static int table_write(void) {
 static int slot_of(const char *name) {
     const char *b = strrchr(name, '/');
     b = b ? b + 1 : name;
-    size_t n = strlen(b);
-    if (n >= 11 && !strcmp(b + n - 11, "default.cfg")) return 0;
-    if (!strncmp(b, "doomsav", 7) && b[7] >= '0' && b[7] <= '5' && !strcmp(b + 8, ".dsg")) return 1 + (b[7] - '0');
+    for (int i = 0; i < CFGS; i++) if (!strcmp(b, CFG_NAME[i])) return i;
+    size_t p = sizeof SAVE_PREFIX - 1;
+    if (!strncmp(b, SAVE_PREFIX, p) && b[p] >= '0' && b[p] <= '5' && !strcmp(b + p + 1, SAVE_EXT)) return CFGS + (b[p] - '0');
     return -1;
 }
 
-static uint32_t slot_start(int s) { return s == 0 ? 1 : 1 + CFG_SECTORS + (uint32_t) (s - 1) * SAVE_SECTORS; }
-static uint32_t slot_max(int s) { return (s == 0 ? CFG_SECTORS : SAVE_SECTORS) * 512u; }
+static uint32_t slot_start(int s) {
+    return s < CFGS ? 1 + (uint32_t) s * CFG_SECTORS : 1 + CFGS * CFG_SECTORS + (uint32_t) (s - CFGS) * SAVE_SECTORS;
+}
+static uint32_t slot_max(int s) { return (s < CFGS ? CFG_SECTORS : SAVE_SECTORS) * 512u; }
 
 void kg_save_init(void) {
     ready = 0;
@@ -151,3 +169,5 @@ void kg_save_remove(const char *name) {
     table[s] = 0;
     table_write();
 }
+
+_Static_assert(1 + CFGS * CFG_SECTORS + 6 * SAVE_SECTORS <= FILE_SECTORS, "the slots must fit the save file");

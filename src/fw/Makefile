@@ -7,10 +7,14 @@
 XPACK   ?= $(firstword $(wildcard $(HOME)/opt/xpack-riscv-none-elf-gcc-15.2.0-1/bin /c/Users/*/opt/xpack-riscv-none-elf-gcc-15.2.0-1/bin) $(HOME)/opt/xpack-riscv-none-elf-gcc-15.2.0-1/bin)
 CROSS   := $(XPACK)/riscv-none-elf-
 ifneq ($(filter MINGW% MSYS%,$(shell uname -s)),)
-# the Windows gcc needs a writable TMP (msys make passes none: it fell back to C:\Windows)
+# msys make passes no TMP / LOCALAPPDATA / USERPROFILE to Windows programs: the gcc fell back to C:/Windows
+# for its temporary files, the python of the Python install manager installed a runtime into the current dir
 export TMP := $(shell cygpath -w /tmp)
 export TEMP := $(TMP)
+export LOCALAPPDATA := $(shell cygpath -w -F 0x1c)
+export USERPROFILE := $(shell cygpath -w -F 0x28)
 endif
+PYTHON ?= python3
 ARCH    ?= rv32im
 OPT     ?= -O2
 LAYOUT  ?= sdram
@@ -55,7 +59,7 @@ $(B)/%.o: %.c | $(B)
 $(B)/i_video_copy.o: $(DG)/i_video.c | $(B)
 	$(CROSS)gcc $(CFLAGS) -c $< -o $@
 $(B)/i_video_direct.c: $(DG)/i_video.c fbdirect.py | $(B)
-	./fbdirect.py $< $@
+	$(PYTHON) fbdirect.py $< $@
 $(B)/i_video_direct.o: $(B)/i_video_direct.c mmio.h
 	$(CROSS)gcc $(CFLAGS) -c $< -o $@
 $(B)/w_file_kg.o: w_file_kg.c mmio.h | $(B)
@@ -119,7 +123,7 @@ $(BH)/doom-hw.elf: $(HWOBJ) kg_hw.c font8.h syscalls.c crt0_hw.S mmio.h $(B)/lin
 $(BH)/doom-hw.bin: $(BH)/doom-hw.elf
 	$(CROSS)objcopy -O binary $< $@
 
-# Heretic (chocolate-doom 2.3.0 src/heretic + the common src/ files), the �0 bench build:
+# Heretic (chocolate-doom 2.3.0 src/heretic + the common src/ files), the Ф0 bench build:
 #   make htic [ARCH=..] [OPT=..] [MB=..] [ARGS=..] -> build-htic-$(ARCH)$(OPT)/heretic-$(MB).bin (LAYOUT sdram)
 # The platform is htic/kg_htic.c (main, timer, video into the SRAM frame); htic/kg_htic.h, force-included,
 # replaces src/doomfeatures.h (no multiplayer / dehacked / WAD merge).
@@ -157,6 +161,45 @@ $(HT)/heretic-$(MB).elf: $(HTOBJ) htic/kg_htic.c syscalls.c crt0.S mmio.h $(B)/l
 $(HT)/heretic-$(MB).bin: $(HT)/heretic-$(MB).elf
 	$(CROSS)objcopy -O binary $< $@
 
+# Ф1: the board firmware of Heretic (roms/heretic.bin of the .kg): htic/kg_htic_hw.c + kg_htic.c (KG_HW),
+# the sound (FEATURE_SOUND: i_sound.c of chocolate with i_kgsound.c / i_kgmusic.c as its SDL modules,
+# i_oplmusic.c + opl_kg.c), the saves (kg_save.c, KG_HERETIC), LAYOUT sdram: build-htic-hw-$(ARCH)$(OPT)/
+HH      := build-htic-hw-$(ARCH)$(subst -,,$(OPT))
+HHCFLAGS := -march=$(ARCH)_zicsr -mabi=ilp32 $(OPT) -std=gnu11 -g -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -ffunction-sections -fdata-sections -w -D_DEFAULT_SOURCE \
+           -DFEATURE_SOUND -DKG_HW -DKG_HERETIC -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src -I$(CHOC)/opl
+HHOBJ   := $(addprefix $(HH)/,$(addsuffix .o,$(CHOC_COMMON) i_oplmusic midifile mus2mid opl opl_queue \
+           $(addprefix h_,$(HERETIC)))) \
+           $(addprefix $(HH)/,w_file_kg.o kg_irq.o opl_kg.o i_kgsound.o i_kgmusic.o kg_save.o sdl_compat.o trap.o \
+           kg_htic.o)
+$(HH):
+	mkdir -p $@
+$(HH)/%.o: $(CHOC)/src/%.c htic/kg_htic.h | $(HH)
+	$(CROSS)gcc $(HHCFLAGS) -c $< -o $@
+$(HH)/%.o: $(CHOC)/opl/%.c | $(HH)
+	$(CROSS)gcc $(HHCFLAGS) -c $< -o $@
+$(HH)/h_%.o: $(CHOC)/src/heretic/%.c htic/kg_htic.h | $(HH)
+	$(CROSS)gcc $(HHCFLAGS) -c $< -o $@
+$(HH)/%.o: %.c mmio.h kg_irq.h kg_save.h | $(HH)
+	$(CROSS)gcc $(HHCFLAGS) -c $< -o $@
+$(HH)/sdl_compat.o: compat/sdl_compat.c compat/SDL.h | $(HH)
+	$(CROSS)gcc $(HHCFLAGS) -c $< -o $@
+$(HH)/kg_htic.o: htic/kg_htic.c mmio.h | $(HH)
+	$(CROSS)gcc $(HHCFLAGS) -c $< -o $@
+$(HH)/trap.o: trap.S | $(HH)
+	$(CROSS)gcc -march=$(ARCH)_zicsr -mabi=ilp32 -c $< -o $@
+
+htic-hw: $(HH)/heretic-hw.bin
+.PHONY: $(HH)/heretic-hw.elf
+$(HH)/heretic-hw.elf: $(HHOBJ) htic/kg_htic_hw.c font8.h syscalls.c crt0_hw.S mmio.h $(B)/link-sdram.ld
+	$(CROSS)gcc $(HHCFLAGS) '-DHWARGS="$(HWARGS)"' -c htic/kg_htic_hw.c -o $(HH)/kg_htic_hw.o
+	$(CROSS)gcc $(HHCFLAGS) -c syscalls.c -o $(HH)/syscalls.o
+	$(CROSS)gcc $(ABI) -c crt0_hw.S -o $(HH)/crt0_hw.o
+	$(CROSS)gcc $(LDFLAGS) -Wl,--wrap=realloc -T $(B)/link-sdram.ld -Wl,-Map,$(HH)/heretic-hw.map -o $@ \
+	  $(HH)/crt0_hw.o $(HHOBJ) $(HH)/kg_htic_hw.o $(HH)/syscalls.o -lm
+	$(CROSS)size $@
+$(HH)/heretic-hw.bin: $(HH)/heretic-hw.elf
+	$(CROSS)objcopy -O binary $< $@
+
 clean:
 	rm -rf build-*
-.PHONY: all clean hw htic
+.PHONY: all clean hw htic htic-hw

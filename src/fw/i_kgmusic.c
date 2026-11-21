@@ -5,7 +5,8 @@
  *   1 MIDI: the song as MIDI bytes to the SAM2695 of the board (MMIO_MIDI), timed by the timer
  *     interrupt (kg_midi_run); the music volume scales the volume controller (7) of each channel;
  *   2 off.
- * Both take the song from i_oplmusic's RegisterSong (MUS -> MIDI by mus2mid, midifile.c). */
+ * Both take the song from i_oplmusic's RegisterSong (MUS -> MIDI by mus2mid, midifile.c).
+ * KG_HERETIC (core-heretic): the module is music_sdl_module (the first of i_sound.c's list). */
 #include <stdint.h>
 #include <string.h>
 #include "doomtype.h"
@@ -241,7 +242,11 @@ static snddevice_t devices[] = { SNDDEVICE_ADLIB, SNDDEVICE_SB, SNDDEVICE_PAS, S
                                  SNDDEVICE_WAVEBLASTER, SNDDEVICE_SOUNDCANVAS, SNDDEVICE_GENMIDI,
                                  SNDDEVICE_AWE32 };
 
+#ifdef KG_HERETIC
+music_module_t music_sdl_module = {
+#else
 music_module_t DG_music_module = {
+#endif
     devices,
     sizeof devices / sizeof devices[0],
     Kg_Init,

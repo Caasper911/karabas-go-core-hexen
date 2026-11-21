@@ -3,9 +3,12 @@
 CPU ?= VexRiscv
 OBJ := obj_$(CPU)
 ifneq ($(filter MINGW% MSYS%,$(shell uname -s)),)
-# the Windows gcc needs a writable TMP (msys make passes none: it fell back to C:/Windows)
+# msys make passes no TMP / LOCALAPPDATA / USERPROFILE to Windows programs: the gcc fell back to C:/Windows
+# for its temporary files, the python of the Python install manager installed a runtime into the current dir
 export TMP := $(shell cygpath -w /tmp)
 export TEMP := $(TMP)
+export LOCALAPPDATA := $(shell cygpath -w -F 0x1c)
+export USERPROFILE := $(shell cygpath -w -F 0x28)
 endif
 
 all: iss $(OBJ)/tb_soc obj_rtl/tb_rtl

@@ -48,6 +48,64 @@
 
 **Итог Ф0: GO.** Железо Doom как есть. Дальше Ф1: прошивка Heretic для платы (`kg_hw`, ввод, звук, сохранения), свой .kg.
 
+## Ф1 — прошивка Heretic для платы (ветка `f1-fw`)
+
+RTL и битстримы Doom (26111822) без изменений: .kg = те же битстримы + своя ROM.
+1. `make -C src/fw htic-hw`: `htic/kg_htic_hw.c` — ожидание WAD, ввод (USB-отчёт, мышь, оба геймпада → события
+   chocolate в `I_StartTic`), лог на экран при выходе; видео / таймер — общие с `kg_htic.c`. Звук: `i_sound.c`
+   chocolate с `FEATURE_SOUND`, модули `sound_sdl_module` / `music_sdl_module` = `i_kgsound.c` / `i_kgmusic.c`
+   (сдвиг высоты звуков Heretic, `snd_pitchshift`), OPL — `i_oplmusic.c` + `opl_kg.c`, MIDI — SAM2695.
+2. Клавиши: по умолчанию Heretic (инвентарь `[` `]` Enter, полёт PgUp / Ins / Home, обзор PgDn / Del / End);
+   OSD Controls / Mouse move как в Doom. Геймпад: A огонь, B use, C бег, Start Enter (артефакт / меню),
+   X Esc, Y / Z инвентарь вправо / влево, Mode — следующее оружие.
+3. Сохранения (`kg_save.c`, `KG_HERETIC`): файл 1 MB, сектор 0 — таблица `KGHTICS1`, `heretic.cfg` и
+   `chocolate-heretic.cfg` по 16 секторов, 6 слотов `hticsav%d.hsg` по 335 секторов (171 520 байт; предел vanilla 196 608).
+4. ISS: старт, новая игра с клавиш, WAV эффектов, лог OPL, сохранение / загрузка через `--sd`.
+5. `roms/heretic.bin`, `core.json` (id `heretic`, каталог `/heretic`), `heretic.kg`. Затем плата Mini G (с вопросом).
+
+### Результаты Ф1 в ISS (2026-11-21)
+
+- `make -C src/fw htic-hw` → ROM 471 KB; `make -C src rom kg` → `src/heretic.kg` (битстримы 26111822 из git, ISE не нужен;
+  `doom.kg` и `roms/doom.bin` убраны). Прошивка Doom (`make hw`) по-прежнему собирается.
+- ISS с прошивкой платы (HERETIC1.WAD): ожидание WAD → старт, «Saves: on the SD card»; Esc → New Game → эпизод →
+  сложность → E1M1 (кадры); эффекты в WAV, OPL (`--music 0`) и MIDI (`--music 1`) пишутся.
+- Сохранение F2 → слот 0 → имя «ab» → «game saved»: слот `hticsav0.hsg` 47 796 байт; новый запуск → F3 → слот «ab» →
+  игра загружена. Выход из меню (Quit → Y): `heretic.cfg` 1 536 и `chocolate-heretic.cfg` 2 744 байт на SD.
+- Найдено и исправлено:
+  - `syscalls.c`: меню загрузки Heretic открывает сохранения как `"rb+"`; `_open` считал это записью — пустой новый
+    файл, а при закрытии слот на SD затирался. Теперь сохранённый файл подгружается при любом режиме, без `O_CREAT`
+    отсутствующий файл не создаётся, флаг записи — только при записи / усечении.
+  - `chat_macros[]` Heretic 2.3.0 никто не заполняет (NULL), `M_SaveDefaults` печатает их через `%s`: glibc пишет
+    `(null)`, newlib-nano читает память с адреса 0 — `heretic.cfg` выходил 1 MB. Заполняются пустыми строками до старта.
+- Windows: msys make не передаёт программам `TMP` / `LOCALAPPDATA` / `USERPROFILE` (менеджер Python ставил среду в текущий каталог) — Makefile экспортируют их; `make_core.py` (симлинк в git)
+  на Windows — текстовый файл с путём, `src/Makefile` берёт путь из него.
+- **Плата (2026-11-21): `heretic.kg` работает на Mini G** (проверил пользователь). Go и Mini не запускались.
+
+## Разведка: Hexen и Strife — одно ядро на все игры chocolate? (2026-11-21)
+
+Пробные сборки стенда (платформа `htic/`, вне репо: `C:/hobby/scratch-games/g.mk`, заглушки HR / CD / dirent).
+WAD-ы локально: `~/Downloads/hexen-demo/HEXEN.WAD` (демо 1.0, 4 карты, 10 644 136 байт, md5 876a5a44…),
+`~/Downloads/strife-demo/STRIFE0.WAD` (демо 1.1, md5 bb545b9c…, из idgames `roguestuff/strife11.zip`).
+
+- **Hexen** (код 624 KB, нужен `-fcommon`; экран старта 640x480 и CD — заглушки, старт текстовый): рисуется верно.
+  `-timedemo demo1`: **1.79 млн инструкций на кадр** (Heretic 1.26), промахов 34.7 / 1000 (Heretic 21.6); невыровненных 0.
+  Профиль: `R_DrawColumn` 36 %, `R_DrawSpan` 21 %, `R_RenderSegLoop` 7 %, `R_MapPlane` 4 %, `R_DrawTLColumn` 1.4 %.
+  `model.py` при 75 MHz (среднее / p95): 4K/4K **16.9 / 12.1**, 8K/8K 20.4 / 14.7, 16K/16K 22.4 / 16.3 —
+  порог 20 только с большими кэшами (новый вариант VexRiscv: SpinalHDL, sbt + Java) или ускорением рисования.
+  Zone 8 MB хватило на demo1. Сохранения: на слот файл + файл на каждую карту хаба, слоты база / возрождение
+  копируются целиком — нужна файловая система в файле сохранений и файл больше 1 MB.
+- **Strife** (код 502 KB, dehacked обязателен): chocolate-strife 2.3.0 не поддерживает демо STRIFE0.WAD (считает
+  WAD полной версией: заставка требует STARTUP0, без неё `-nograph` — `GLASS09 not found`). Замер — только на
+  STRIFE1.WAD (коммерческий). В STRIFE0.WAD 1498 невыровненных lump-ов (VexRiscv ловит невыровненные обращения:
+  такие lump-ы надо копировать в zone); syscalls отвечает «есть» на любой `.wad` — Strife добавил бы тот же WAD как
+  `voices.wad`. Сохранения — каталоги (`opendir` / `readdir`), служебный каталог переписывается при каждой смене карты.
+- Прошивка MCU (`origin/master`): несколько ROM в .kg по своим адресам грузятся уже сейчас; файл сохранений —
+  не больше 1 MB (`BK_MAX_SECTORS 2048` в `bk_save.c`), но kind n даёт отдельные файлы `<имя>.ss<n>` (у нас
+  `doom_sd.v` шлёт kind 0).
+
+**Решение пользователя (2026-11-21): ядра остаются раздельными** — Doom, Heretic (и, если будут, Hexen / Strife)
+отдельными .kg на общих битстримах; объединения нет.
+
 ---
 
 # История: Doom (karabas-go-core-doom)

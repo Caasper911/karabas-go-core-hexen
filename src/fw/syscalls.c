@@ -74,6 +74,7 @@ int _write(int fd, const char *buf, int len) {
         }
         memcpy(f->data + f->pos, buf, len);
         f->pos += len;
+        f->written = 1;
         if (f->pos > f->size) f->size = f->pos;
         return len;
     }
@@ -105,8 +106,9 @@ int _open(const char *name, int flags, int mode) {
     (void)mode;
     if ((flags & 3) == O_RDONLY && kg_is_wad(name)) { wad_pos = 0; return WAD_FD; }
     ramfile_t *f = rf_find(name);
-    if (!f && (flags & 3) == O_RDONLY && kg_save_size && kg_save_size(name) >= 0) {
-        /* a kept file: read it into a RAM file first */
+    if (!f && !(flags & O_TRUNC) && kg_save_size && kg_save_size(name) >= 0) {
+        /* a kept file: read it into a RAM file first (also for "rb+": the load menu of Heretic
+           opens the savegames so, an empty new file there wiped the slot at its close) */
         int n = kg_save_size(name);
         for (int i = 0; i < RAM_FILES && !f; i++) if (!rf[i].used) f = &rf[i];
         if (f && strlen(name) < sizeof f->name) {
@@ -119,8 +121,10 @@ int _open(const char *name, int flags, int mode) {
             } else { free(f->data); memset(f, 0, sizeof *f); f = 0; }
         } else f = 0;
     }
-    if ((flags & 3) == O_RDONLY) {
+    if ((flags & 3) == O_RDONLY || !(flags & O_CREAT)) {
+        /* read, or update ("rb+") of a file that must exist */
         if (!f || f->open) { errno = ENOENT; return -1; }
+        if (flags & O_TRUNC) { f->size = 0; f->written = 1; }
     } else {
         if (!f) {
             for (int i = 0; i < RAM_FILES && !f; i++) if (!rf[i].used) f = &rf[i];
@@ -131,7 +135,7 @@ int _open(const char *name, int flags, int mode) {
         }
         if (f->open) { errno = EBUSY; return -1; }
         if (flags & O_TRUNC) f->size = 0;
-        f->written = 1;
+        f->written = 1;                    /* created or truncated: stored at the close */
     }
     f->open = 1;
     f->pos = (flags & O_APPEND) ? f->size : 0;

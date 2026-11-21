@@ -1,7 +1,9 @@
 /* Ф0 bench (karabas): the platform of Heretic (chocolate-doom 2.3.0 src/heretic) for the ISS:
    main (as src/i_main.c), the timer (src/i_timer.c without SDL), the video (src/i_video.c without
    SDL: Heretic draws straight into the SRAM frame FB_BASE, I_FinishUpdate marks the frame in MMIO,
-   the palette goes to MMIO_PAL), no input, no joystick, no ENDOOM. Args: ARGS from the Makefile. */
+   the palette goes to MMIO_PAL), no input, no joystick, no ENDOOM. Args: ARGS from the Makefile.
+   Ф1: with KG_HW (the board build) main, I_StartTic and the sound stubs are in kg_htic_hw.c; the
+   timer, the video and the other stubs stay here. */
 #include <stdint.h>
 #include <string.h>
 #include "config.h"
@@ -22,6 +24,15 @@
 
 void D_DoomMain(void);
 
+/* heretic/ct_chat.c leaves chat_macros[] NULL (only a config sets them); M_SaveDefaults prints
+   them with %s: "(null)" with glibc, but newlib-nano reads from address 0 up to a zero byte (the
+   heretic.cfg of the first quit was 1 MB). Empty strings instead. */
+extern char *chat_macros[10];
+void kg_htic_chat_macros(void) {
+    for (int i = 0; i < 10; i++) if (!chat_macros[i]) chat_macros[i] = "";
+}
+
+#ifndef KG_HW
 /* ---- main (src/i_main.c) ---- */
 int main(void) {
     /* one writable string, split in place at the spaces */
@@ -39,9 +50,14 @@ int main(void) {
     myargc = n;
     myargv = av;
     M_FindResponseFile();
+    kg_htic_chat_macros();
     D_DoomMain();
     return 0;
 }
+void I_StartTic(void) {}
+#else
+void kg_save_show(void);
+#endif
 
 /* ---- timer (src/i_timer.c) ---- */
 static uint32_t basetime;
@@ -95,7 +111,12 @@ int I_GetPaletteIndex(int r, int g, int b) {
     return best;
 }
 void I_UpdateNoBlit(void) {}
-void I_FinishUpdate(void) { MMIO_FRAME = frame++; }
+void I_FinishUpdate(void) {
+    MMIO_FRAME = frame++;
+#ifdef KG_HW
+    if ((frame & 63) == 0) kg_save_show();   /* the state of the saves in DEBUG_ADDR */
+#endif
+}
 void I_ReadScreen(byte *scr) { memcpy(scr, I_VideoBuffer, SCREENWIDTH * SCREENHEIGHT); }
 void I_BeginRead(void) {}
 void I_SetWindowTitle(char *title) { (void) title; }
@@ -106,7 +127,6 @@ void I_BindVideoVariables(void) {}
 void I_InitWindowTitle(void) {}
 void I_InitWindowIcon(void) {}
 void I_StartFrame(void) {}
-void I_StartTic(void) {}
 void I_EnableLoadingDisk(int xoffs, int yoffs) { (void) xoffs; (void) yoffs; }
 
 /* ---- joystick (src/i_joystick.c), ENDOOM (src/i_endoom.c) ---- */
@@ -134,14 +154,18 @@ void NET_CL_Run(void) {}
 void NET_CL_StartGame(net_gamesettings_t *settings) { (void) settings; }
 boolean NET_CL_GetSettings(net_gamesettings_t *settings) { (void) settings; return false; }
 void NET_SV_Run(void) {}
-void DEH_Checksum(sha1_digest_t digest) { memset(digest, 0, sizeof(sha1_digest_t)); }
-char *snd_dmxoption = "";
-int opl_io_port = 0x388;
+__attribute__((weak)) void DEH_Checksum(sha1_digest_t digest) { memset(digest, 0, sizeof(sha1_digest_t)); }
 char *timidity_cfg_path = "";
 char *gus_patch_path = "";
 int gus_ram_kb = 1024;
 void I_InitTimidityConfig(void) {}
+#ifndef KG_HW
+char *snd_dmxoption = "";                   /* the board build: src/i_oplmusic.c */
+int opl_io_port = 0x388;
 void I_SetOPLDriverVer(opl_driver_ver_t ver) { (void) ver; }
 int usemouse = 0;
+#else
+int usemouse = 1;
+#endif
 void I_ResetScaleTables(byte *palette) { (void) palette; }
 void V_BeginRead(size_t nbytes) { (void) nbytes; }

@@ -3,7 +3,10 @@
  * (kg_sfx_tick, every 5 ms) into the ring of doom_audio.v (SFX_RING entries of { right, left },
  * played at 11025 Hz), LEAD samples ahead of the play position: ~40 ms of latency whatever the frame
  * rate. A lump of another rate is stepped (no filter, as the SB of DOS). Volume / separation as
- * chocolate-doom i_sdlsound.c: left = (254 - sep) * vol / 127, right = sep * vol / 127. */
+ * chocolate-doom i_sdlsound.c: left = (254 - sep) * vol / 127, right = sep * vol / 127.
+ * KG_HERETIC (Ф1 of core-heretic, the i_sound.h of chocolate-doom 2.3.0): the module is
+ * sound_sdl_module (the first of i_sound.c's list), StartSound has the pitch of Heretic: with
+ * snd_pitchshift the sound is stepped by 1 / (2 - pitch / 127), the length ratio of i_sdlsound.c. */
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -25,7 +28,7 @@ typedef struct {
     int left, right;                  /* 0..254 */
 } channel_t;
 
-/* the settings of doomgeneric i_sound.c (libsamplerate is in the SDL module only) */
+/* the settings of i_sound.c (libsamplerate is in the SDL module only) */
 int use_libsamplerate = 0;
 float libsamplerate_scale = 0.65f;
 
@@ -78,6 +81,7 @@ static void Kg_Shutdown(void) {
 
 static int Kg_GetSfxLumpNum(sfxinfo_t *sfx) {
     char name[9];
+    if (sfx->link) sfx = sfx->link;          /* as i_sdlsound.c */
     if (use_prefix) snprintf(name, sizeof name, "ds%s", sfx->name);
     else snprintf(name, sizeof name, "%s", sfx->name);
     return W_GetNumForName(name);
@@ -101,7 +105,12 @@ static void Kg_UpdateSoundParams(int channel, int vol, int sep) {
     kg_unlock();
 }
 
+#ifdef KG_HERETIC
+#define NORM_PITCH 127
+static int Kg_StartSound(sfxinfo_t *sfx, int channel, int vol, int sep, int pitch) {
+#else
 static int Kg_StartSound(sfxinfo_t *sfx, int channel, int vol, int sep) {
+#endif
     if (channel < 0 || channel >= NUM_CH) return -1;
     int lump = sfx->lumpnum;
     const uint8_t *d = W_CacheLumpNum(lump, PU_STATIC);
@@ -117,6 +126,10 @@ static int Kg_StartSound(sfxinfo_t *sfx, int channel, int vol, int sep) {
     c->len = len - 32;
     c->pos = 0;
     c->step = (uint32_t) (((uint64_t) rate << 16) / SFX_RATE);
+#ifdef KG_HERETIC
+    if (snd_pitchshift > 0 && pitch > 0 && pitch < 2 * NORM_PITCH)
+        c->step = (uint32_t) (((uint64_t) rate << 16) * NORM_PITCH / ((uint64_t) SFX_RATE * (2 * NORM_PITCH - pitch)));
+#endif
     set_params(c, vol, sep);
     kg_unlock();
     return channel;
@@ -136,7 +149,11 @@ static boolean Kg_SoundIsPlaying(int channel) {
 
 static void Kg_CacheSounds(sfxinfo_t *sounds, int num_sounds) { (void) sounds; (void) num_sounds; }
 
+#ifdef KG_HERETIC
+sound_module_t sound_sdl_module = {
+#else
 sound_module_t DG_sound_module = {
+#endif
     devices,
     sizeof devices / sizeof devices[0],
     Kg_Init,
