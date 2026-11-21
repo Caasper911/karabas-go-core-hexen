@@ -1,15 +1,15 @@
 {
-    "id": "heretic",
-    "name": "Heretic",
+    "id": "hexen",
+    "name": "Hexen",
     "build": "26112115",
     "visible": true,
     "type": "osd",
-    "order": 31,
+    "order": 32,
     "eeprom_bank": 255,
     "rtc_mode": 0,
     "roms": [
         {
-            "filename": "roms/heretic.bin",
+            "filename": "roms/hexen.bin",
             "address": 0
         }
     ],
@@ -36,7 +36,7 @@
             "name": "WAD",
             "slot": 0,
             "extensions": ".wad",
-            "dir": "/heretic",
+            "dir": "/hexen",
             "hotkey": "Menu+F1",
             "autoload": true
         },
