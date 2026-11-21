@@ -23,7 +23,7 @@
      40 R  US: microseconds since reset (low 32)
      44 W  TCMP: the timer interrupt (VexRiscv timerInterrupt, level) is on while TEN and US - TCMP >= 0
      48 W  TEN: bit 0
-     50 R  SW: the OSD switches (kg_mcu2 SW, item 2 = Music in bits 15..8)
+     50 R  SW: the OSD switches (kg_mcu2 SW: FPS 7..0, Music 15..8, Controls 23..16, Mouse move 31..24)
      60..70, 2000..3ffc: doom_audio (OPL3, MIDI, the SFX ring)
      80..90, 1000..17fc: doom_sd (the save file, its sector buffer)
      400..7fc W  PAL: palette entry ((a - 400) / 4) = 0x00RRGGBB

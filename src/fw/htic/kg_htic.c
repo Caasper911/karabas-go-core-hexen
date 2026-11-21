@@ -118,7 +118,13 @@ int I_GetPaletteIndex(int r, int g, int b) {
     return best;
 }
 void I_UpdateNoBlit(void) {}
+#ifdef KG_HW
+void kg_fps_overlay(byte *fb);           /* kg_htic_hw.c: the OSD item FPS */
+#endif
 void I_FinishUpdate(void) {
+#ifdef KG_HW
+    kg_fps_overlay(I_VideoBuffer);
+#endif
     MMIO_FRAME = frame++;
 #ifdef KG_HW
     if ((frame & 63) == 0) kg_save_show();   /* the state of the saves in DEBUG_ADDR */

@@ -10,7 +10,7 @@
 //            [--dump-at F file: after frame F write SRAM + SDRAM (36 MB) with a resume stub at 0x11fff000]
 //            [--resume file: start from such a dump (registers from it, cold caches), fw.bin ignored]
 //            [--frames N: stop after N frames]
-//            Ф2: [--music N: MMIO_SW bits 15..8] [--wav file: the SFX ring as played, 11025 Hz stereo]
+//            Ф2: [--music N: MMIO_SW bits 15..8] [--fps N: MMIO_SW bits 7..0 (the OSD item FPS)] [--wav file: the SFX ring as played, 11025 Hz stereo]
 //            [--opl-log file: "us reg value" of the OPL writes] [--midi-log file: "us byte"]
 //            Ф3: [--sd file: the 1 MB save file of doom_sd (made if absent)] [--keys F:U,F:U...: at frame F the
 //            USB key U is down (0: all up)]
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     int dump_at = -1, stop_frames = -1, nframes = 0;
     const char *dump_path = 0, *resume = 0;
     bool dump_now = false;
-    int music = 0;
+    int music = 0, fps_sw = 0;
     FILE *wavf = 0, *oplf = 0, *midif = 0;
     uint32_t ring[2048] = {0};
     uint64_t emitted = 0, wav_n = 0;
@@ -89,6 +89,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--resume")) resume = argv[++i];
         else if (!strcmp(argv[i], "--frames")) stop_frames = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--music")) music = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--fps")) fps_sw = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--sd")) sd_path = argv[++i];
         else if (!strcmp(argv[i], "--keys")) {
             char *k = argv[++i];
@@ -150,7 +151,7 @@ int main(int argc, char **argv) {
             case 0x0c: return (uint32_t)ninstr;
             case 0x1c: return (uint32_t)(ninstr / 32000);
             case 0x40: return (uint32_t)(ninstr / 32);
-            case 0x50: return (uint32_t)music << 8;
+            case 0x50: return (uint32_t)music << 8 | (uint32_t)fps_sw;
             case 0x70: return (uint32_t)((ninstr / 32) * 11025 / 1000000) & 2047;
             case 0x28: return kbd0;
             case 0x30: return kbdn;
