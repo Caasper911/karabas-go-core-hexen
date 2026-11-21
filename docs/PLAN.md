@@ -1,4 +1,56 @@
-# Doom для Karabas Go / Mini / Mini G — план
+# Heretic для Karabas Go / Mini / Mini G — план
+
+Репо создано 2026-11-21 клоном karabas-go-core-doom (история с bd8f2f5). Ниже — план Heretic, под ним — история Doom.
+
+## Обзор (2026-11-21)
+
+- RTL ядра Doom подходит как есть: 320x200x8 с палитрой, DMA кадра, звук DMX, музыка MUS (GENMIDI есть в WAD).
+- Исходники: `upstream/chocolate-doom/src/heretic` (2.3.0) + общие файлы `src/` chocolate (не doomgeneric: в нём только Doom).
+  Нужен свой `i_video` (кадр прямо в SRAM, как `fbdirect.py`), `compat/SDL.h` шире.
+- Своя ROM и свой `heretic.kg` (имена функций Doom / Heretic совпадают), каталог `/heretic`.
+- Клавиши: инвентарь `[` / `]` / Enter, полёт PgUp / Ins / Home, обзор PgDn / Del / End; кнопки геймпада.
+- Сохранения: `hticsav%d.hsg`, `heretic.cfg`; `SAVEGAMESIZE` 192 KB (384 сектора) > слота 338 — пересчитать раскладку.
+- Ожидание ~18–24 fps (лишнее: `R_DrawTLColumn`, детальнее уровни) — замерить (Ф0: ~27 fps).
+- Тестовый WAD: шареварный HERETIC1.WAD 1.2 (5 120 920 байт) в `~/Downloads/heretic-sw`.
+
+## Ф0 — замер (go / no-go), без платы
+
+1. Heretic под rv32im (`src/fw`, своя цель Makefile), WAD в памяти, кадр в SRAM.
+2. ISS: `-timedemo demo1` на HERETIC1.WAD, кадры в картинки (проверка вида), профиль, невыровненные обращения.
+3. `model.py`: fps при 75 MHz, 4K / 4K. Порог — 20 fps в среднем, как у Doom.
+
+### Результаты Ф0 (2026-11-21, ветка `f0-iss`)
+
+- Сборка: `make -C src/fw htic` → `build-htic-rv32imO2/heretic-6.bin` (код ~430 KB). Платформа — `src/fw/htic/`:
+  `kg_htic.c` (main, таймер, видео прямо в SRAM-кадр 0x3f0000, палитра в MMIO, заглушки сети / джойстика / ENDOOM),
+  `kg_htic.h` (вместо `doomfeatures.h`: без сети, dehacked, WAD merge), `config.h`, заглушки `SDL*.h` и textscreen
+  (`TXT_Init` = 0 → текстовый старт). Общие файлы `src/` chocolate без правок; `m_config.c` с `-DFEATURE_SOUND`
+  (иначе в таблице нет переменных, которые `i_sound.c` привязывает всегда). `I_InitGraphics` обязан звать
+  `V_RestoreBuffer` и ставить палитру (как upstream `i_video.c`), иначе статус-бар рисуется по адресу 0, а кадр чёрный.
+- Windows: xPack riscv-none-elf-gcc 15.2.0-1 поставлен в `C:/Users/<user>/opt` (Makefile ищет и там); msys make
+  не передаёт TMP — Makefile `src/fw` и `src/sim` выставляют его сами. `src/sim/ppm2png.py` — кадр ISS в PNG без PIL.
+- HERETIC1.WAD 1.2: все 1374 lump-а выровнены на 4; невыровненных обращений 0 за весь demo1.
+- Вид проверен по кадрам ISS (E1M1: стены, небо, спрайты, оружие, статус-бар, сообщения).
+- `-timedemo demo1`: 2734 кадра, **1.26 млн инструкций на кадр** (Doom II demo1 — 1.34). Профиль 4K / 4K:
+  `R_DrawColumn` 42 %, `R_DrawSpan` 25 %, `R_RenderSegLoop` 5 %, `R_MakeSpans` 3 %, `R_DrawMaskedColumn` 3 %,
+  `strncasecmp` 1.7 % (поиск lump-ов по имени каждый кадр), `FixedMul` 1 %. `R_DrawTLColumn` вне первых 20.
+
+`model.py` (CPI 1.50 + 28 тактов на строку, калибровка Doom), fps среднее / p95:
+
+| I$ / D$ | промахов / 1000 | 60 MHz | 70 MHz | 75 MHz | 80 MHz |
+|---|---:|---:|---:|---:|---:|
+| 4K / 4K | 21.6 | 22.7 / 16.9 | 26.5 / 19.8 | 28.3 / 21.2 | 30.2 / 22.6 |
+| 8K / 8K | 14.7 | 25.0 / 19.5 | 29.1 / 22.8 | 31.2 / 24.4 | 33.3 / 26.0 |
+| 16K / 16K | 9.8 | 26.9 / 21.1 | 31.4 / 24.6 | 33.6 / 26.4 | 35.9 / 28.2 |
+
+С поправкой на CPI платы (2.49 против 2.38 у модели, Ф1 Doom) при 75 MHz 4K / 4K ≈ **27 fps в среднем**
+(Doom II по той же модели ~24, на плате 20–25).
+
+**Итог Ф0: GO.** Железо Doom как есть. Дальше Ф1: прошивка Heretic для платы (`kg_hw`, ввод, звук, сохранения), свой .kg.
+
+---
+
+# История: Doom (karabas-go-core-doom)
 
 ## Исходные данные (обзор 2026-11-18)
 

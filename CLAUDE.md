@@ -4,9 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A Doom core for the Karabas Go, Mini and Mini G boards (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST). No FPGA upstream: a soft CPU (VexRiscv, MIT) runs doomgeneric (Chocolate Doom 2.x, GPL-2+); video, the SFX mixer, OPL3 FM and the MIDI path to the SAM2695 are RTL. Docs, in Russian: `docs/PLAN.md` (survey, decisions, phases, Ф0 measurements). Follow the phases; record a changed decision in PLAN.md.
+A Heretic core for the Karabas Go, Mini and Mini G boards (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST), cloned on
+2026-11-21 from karabas-go-core-doom (local clone, history kept, no remote yet). The same SoC: a soft CPU (VexRiscv,
+MIT); video, the SFX mixer, OPL3 FM and the MIDI path to the SAM2695 are RTL. The game: `src/heretic` of
+Chocolate Doom 2.3.0 (`upstream/chocolate-doom`, GPL-2+) with its common `src/` files; doomgeneric (Doom only) stays
+as the reference of the Doom port until Heretic runs. Docs, in Russian: `docs/PLAN.md` (Heretic phases on top,
+the Doom history below). Follow the phases; record a changed decision in PLAN.md.
 
-No WAD files in git or in the .kg: the user loads an IWAD from SD1 (OSD file item). Test WADs stay local (`~/Downloads`).
+No WAD files in git or in the .kg: the user loads an IWAD from SD1 (OSD file item). Test WADs stay local: the
+shareware `~/Downloads/heretic-sw/HERETIC1.WAD` (v1.2, md5 ae779722390ec32fa37b0d361f7d82f8).
 
 ## Rules of the core
 

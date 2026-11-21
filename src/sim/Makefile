@@ -2,6 +2,11 @@
 # obj_rtl/tb_rtl (the SoC RTL on pin models of the SDRAM / SRAM)
 CPU ?= VexRiscv
 OBJ := obj_$(CPU)
+ifneq ($(filter MINGW% MSYS%,$(shell uname -s)),)
+# the Windows gcc needs a writable TMP (msys make passes none: it fell back to C:/Windows)
+export TMP := $(shell cygpath -w /tmp)
+export TEMP := $(TMP)
+endif
 
 all: iss $(OBJ)/tb_soc obj_rtl/tb_rtl
 

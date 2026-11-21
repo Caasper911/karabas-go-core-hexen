@@ -6,14 +6,14 @@
 # at the CPU clock (first word 8, next words 2: CL2 + 16-bit) and write-through stores (SRAM 6 /
 # SDRAM 7 clocks; their cost hides behind the pipeline: a posted write buffer gains < 1 %).
 # Bigger caches: same BASE / MISS (needs a regenerated VexRiscv to confirm).
-# usage: model.py <out_dir of run_f0.sh> [skip frames]
+# usage: model.py <out_dir of run_f0.sh> [skip frames]   (the frame hash, field 11+, is not used)
 import glob, os, sys
 OUT = sys.argv[1]
 SKIP = int(sys.argv[2]) if len(sys.argv) > 2 else 5
 BASE, MISS = 1.50, 28
 def frames(fn):
-    return [list(map(int, l.strip().split(',')[1:])) for l in open(fn) if l.startswith('F,')][SKIP:]
-MHZ = [50, 60, 70, 80]
+    return [list(map(int, l.strip().split(',')[1:11])) for l in open(fn) if l.startswith('F,')][SKIP:]
+MHZ = [50, 60, 70, 75, 80]
 print(f"{'I$/D$':>10} {'Minstr/fr':>9} {'miss/kI':>8}  " + "".join(f"{m:>10} MHz" for m in MHZ) + "   (fps mean / p95)")
 for fn in sorted(glob.glob(os.path.join(OUT, 'sweep_*.txt')), key=lambda f: [int(x) for x in os.path.basename(f)[6:-4].split('_')]):
     fr = frames(fn)

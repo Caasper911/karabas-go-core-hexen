@@ -1,5 +1,7 @@
 src/fw/build-*
 src/sim/iss
+src/sim/iss.exe
+src/sim/out/
 src/sim/obj_*
 *.wad
 *.WAD
