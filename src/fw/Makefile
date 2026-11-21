@@ -215,7 +215,7 @@ HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(fil
            $(if $(filter hw,$(HXDRAW)),$(HX)/kg_r_draw_hw.o)
 HXHWDRAW := $(if $(filter hw,$(HXDRAW)),-DKG_HWDRAW)
 # Ф1г: memcpy / memset by words (kg_mem.c) before libc
-HXOBJ   += $(HX)/kg_mem.o
+HXOBJ   += $(HX)/kg_mem.o $(HX)/kg_lz.o
 # Ф1г: hexen/r_segs.c (R_RenderSegLoop in locals) with the kg / hw drawers
 HXOBJ   += $(if $(filter kg hw,$(HXDRAW)),$(HX)/kg_r_segs.o $(HX)/kg_r_plane$(if $(filter hw,$(HXDRAW)),_hw).o $(HX)/kg_r_things$(if $(filter hw,$(HXDRAW)),_hw).o)
 HXCFLAGS := $(ABI) $(OPT) -std=gnu11 -g -fcommon -ffunction-sections -fdata-sections -w -D_DEFAULT_SOURCE \
@@ -241,6 +241,8 @@ $(HX)/kg_r_things.o: hexen/r_things.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(HX)/kg_r_things_hw.o: hexen/r_things.c hexen/kg_hexen_r.h htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -DKG_HWDRAW -I$(CHOC)/src/hexen -c $< -o $@
+$(HX)/kg_lz.o: kg_lz.c kg_lz.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
 $(HX)/kg_mem.o: kg_mem.c | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -fno-builtin -fno-tree-loop-distribute-patterns -c $< -o $@
 $(HX)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(HX)
@@ -264,16 +266,16 @@ $(HX)/hexen-$(MB).bin: $(HX)/hexen-$(MB).elf
 # Ф1: the board firmware of Hexen (roms/hexen.bin of the .kg): the board platform of Heretic
 # (htic/kg_htic_hw.c + kg_htic.c with KG_HW) for KG_HEXEN / KG_GAME "hexen"; KG_HERETIC too (the
 # chocolate sound API of i_kgsound.c / i_kgmusic.c); kg_save.c keeps hexen.cfg / chocolate-hexen.cfg
-# (the savegames are RAM files until Ф2); hexen/r_draw.c as HXDRAW=kg: build-hexen-hw-$(ARCH)$(OPT)/
+# (Ф2: kg_save_fs.c, the savegames packed in the save file); hexen/r_draw.c as HXDRAW=kg: build-hexen-hw-$(ARCH)$(OPT)/
 XH      := build-hexen-hw-$(ARCH)$(subst -,,$(OPT))
 XHCFLAGS := -march=$(ARCH)_zicsr -mabi=ilp32 $(OPT) -std=gnu11 -g -fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -ffunction-sections -fdata-sections -w \
            -D_DEFAULT_SOURCE -DFEATURE_SOUND -DKG_HW -DKG_HERETIC -DKG_HEXEN -DKG_HWDRAW '-DKG_GAME="hexen"' \
            -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src -I$(CHOC)/opl
 XHOBJ   := $(addprefix $(XH)/,$(addsuffix .o,$(CHOC_COMMON) i_oplmusic midifile mus2mid opl opl_queue \
            $(addprefix x_,$(filter-out r_draw r_segs r_plane r_things,$(HEXEN))))) \
-           $(addprefix $(XH)/,w_file_kg.o kg_irq.o opl_kg.o i_kgsound.o i_kgmusic.o kg_save.o sdl_compat.o trap.o \
+           $(addprefix $(XH)/,w_file_kg.o kg_irq.o opl_kg.o i_kgsound.o i_kgmusic.o kg_save_fs.o kg_lz.o sdl_compat.o trap.o \
            kg_htic.o kg_r_draw.o kg_hexen_stubs.o)
-XHOBJ   += $(XH)/kg_mem.o $(XH)/kg_r_segs.o $(XH)/kg_r_plane.o $(XH)/kg_r_things.o
+XHOBJ   += $(XH)/kg_hexen_hw.o $(XH)/kg_mem.o $(XH)/kg_r_segs.o $(XH)/kg_r_plane.o $(XH)/kg_r_things.o
 $(XH):
 	mkdir -p $@
 $(XH)/%.o: $(CHOC)/src/%.c htic/kg_htic.h | $(XH)
@@ -297,6 +299,8 @@ $(XH)/kg_r_segs.o: hexen/r_segs.c hexen/kg_hexen_r.h htic/kg_htic.h | $(XH)
 $(XH)/kg_r_plane.o: hexen/r_plane.c hexen/kg_hexen_r.h htic/kg_htic.h | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(XH)/kg_r_things.o: hexen/r_things.c hexen/kg_hexen_r.h htic/kg_htic.h | $(XH)
+	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(XH)/kg_hexen_hw.o: hexen/kg_hexen_hw.c | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
 $(XH)/kg_mem.o: kg_mem.c | $(XH)
 	$(CROSS)gcc $(XHCFLAGS) -fno-builtin -fno-tree-loop-distribute-patterns -c $< -o $@

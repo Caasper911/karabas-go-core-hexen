@@ -48,9 +48,11 @@ extern boolean MenuActive;            /* heretic/mn_menu.c, hexen/mn_menu.c */
 #endif
 #ifdef KG_HEXEN
 #define KG_TITLE "Hexen"
+#define KG_MB "6"                 /* the zone (peak use 0.8 MB): the heap keeps the RAM files of slots 6 / 7 */
 #define KG_PAD_C key_jump
 #else
 #define KG_TITLE "Heretic"
+#define KG_MB "8"
 #define KG_PAD_C key_speed
 #endif
 void D_DoomMain(void);
@@ -220,7 +222,9 @@ static int has(const uint8_t *r, uint8_t u) {
     return 0;
 }
 
+void kg_save_notice(void) __attribute__((weak));     /* Hexen: a message of the saves */
 void I_StartTic(void) {
+    if (kg_save_notice) kg_save_notice();
     uint32_t n = MMIO_KBDN;
     if (n != last_kbdn) {
         last_kbdn = n;
@@ -287,7 +291,7 @@ int main(void) {
 #ifndef HWARGS
 #define HWARGS ""
 #endif
-    static char args[] = KG_GAME " -iwad " KG_GAME ".wad -mb 8 " HWARGS;
+    static char args[] = KG_GAME " -iwad " KG_GAME ".wad -mb " KG_MB " " HWARGS;
     static char *av[16];
     int n = 0;
     char *s = args;

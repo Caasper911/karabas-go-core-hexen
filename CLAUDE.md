@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Overview
 
 A Hexen core for the Karabas Go, Mini and Mini G boards (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST), cloned on
-2026-11-21 from karabas-go-core-heretic (history kept: Doom, then Heretic; local only, no remote yet). The same SoC
+2026-11-21 from karabas-go-core-heretic (history kept: Doom, then Heretic; private repo Caasper911/karabas-go-core-hexen). The same SoC
 and bitstreams: a soft CPU (VexRiscv, MIT); video, the SFX mixer, OPL3 FM and the MIDI path to the SAM2695 are RTL.
 The game: `src/hexen` of Chocolate Doom 2.3.0 (`upstream/chocolate-doom`, GPL-2+) with its common `src/` files, on
 the platform of the Heretic port (`src/fw/htic/`, kept as the reference) plus `src/fw/hexen/`. Doom, Heretic and
@@ -17,7 +17,7 @@ Hexen demo `~/Downloads/hexen-demo/HEXEN.WAD` (1.0, 4 maps, md5 876a5a44c7b68f04
 shareware `~/Downloads/heretic-sw/HERETIC1.WAD` for the reference build.
 
 Speed (Mini G, board): I$ / D$ 32K, 79.545 MHz, the drawer of the view in the FPGA (Ф1в) and the renderer copies (Ф1г):
-~35 fps in common scenes, 23 at the worst grating. Saves need more than the fixed slots of `kg_save.c` (a file per map of a hub): Ф2.
+~35 fps in common scenes, 23 at the worst grating. Saves (Ф2): packed files in the 1 MB save file (kg_save_fs.c).
 
 ## Rules of the core
 
