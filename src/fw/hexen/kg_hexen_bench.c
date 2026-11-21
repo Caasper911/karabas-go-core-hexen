@@ -5,13 +5,18 @@
      save in slot 0, teleport to maps 2 and 3 of hub 1, save in slot 1, back to map 1, save in slot 1
      again, then the list of the RAM files (hexndata/hex*.hxs) and their sizes, and the quit;
    - -kgspin (with -warp N): turn on the spot (the arrow key held) for 300 tics, then quit: the views of a
-     map start for the slow frames. */
+     map start for the slow frames;
+   - -kgpos X Y A (with -warp N): the player moved to (X, Y) facing A degrees once the level runs (P_TeleportMove);
+     with -kgspin it turns from there. */
 #include <stdio.h>
+#include <stdlib.h>
 #include "doomtype.h"
 #include "d_loop.h"
 #include "i_system.h"
 #include "m_argv.h"
 #include "z_zone.h"
+#include "h2def.h"
+#include "p_local.h"
 #include "d_event.h"
 #include "doomkeys.h"
 
@@ -47,7 +52,18 @@ void kg_bench_tic(void) {
         if (used > zone_peak) { zone_peak = used; zone_peak_tic = gametic; }
     }
     last_tic = gametic;
-    if (spin && gametic >= 300) I_Quit();
+    {
+        static int moved;
+        int i = M_CheckParmWithArgs("-kgpos", 3);
+        if (i && !moved && gamestate == GS_LEVEL && players[consoleplayer].mo) {
+            mobj_t *mo = players[consoleplayer].mo;
+            moved = 1;
+            P_TeleportMove(mo, atoi(myargv[i + 1]) << FRACBITS, atoi(myargv[i + 2]) << FRACBITS);
+            mo->angle = (angle_t) ((long long) atoi(myargv[i + 3]) * ANG90 / 90);
+            players[consoleplayer].viewz = mo->z + players[consoleplayer].viewheight;
+        }
+    }
+    if ((spin || M_ParmExists("-kgpos")) && gametic >= 300) I_Quit();
     if (!bench || step >= (int) (sizeof steps / sizeof steps[0]) || gametic < steps[step].tic) return;
     switch (steps[step].op) {
     case 0: G_SaveGame(steps[step].arg, "BENCH"); break;

@@ -101,6 +101,43 @@ static inline int kg_drw_src(const byte *s)
 {
     return (uint32_t) s - SDRAM_BASE < 0x02000000u;
 }
+
+// a post of R_DrawMaskedColumn (r_things.c) to the drawer, 0: not taken (the CPU draws it)
+int kg_drw_cmidx(const byte *colormap)
+{
+    return kg_hwdraw ? kg_drw_cmap(colormap) : -1;
+}
+int kg_drw_col(int x, int yl, int yh, fixed_t texturemid, fixed_t iscale, int cm, const byte *source)
+{
+    if (!kg_drw_src(source))
+        return 0;
+    if (kg_drw_newframe)
+        kg_drw_sync();
+    MMIO_DRW0 = (uint32_t) (ylookup[yl] + columnofs[x] - I_VideoBuffer) | (uint32_t) (yh - yl) << 16 | (uint32_t) cm << 25;
+    MMIO_DRW_FRAC = texturemid + (yl - centery) * iscale;
+    MMIO_DRW_STEP = iscale;
+    MMIO_DRW_COL = (uint32_t) source - SDRAM_BASE;
+    return 1;
+}
+
+// a span of R_MapPlane (r_plane.c kg_planespans) to the drawer, 0: not taken (the CPU draws it)
+int kg_drw_span(int y, int x1, int x2, fixed_t xfrac, fixed_t yfrac, fixed_t xstep, fixed_t ystep,
+                const byte *colormap, const byte *source)
+{
+    int cm, count = x2 - x1;
+    if (!kg_hwdraw)
+        return 0;
+    cm = kg_drw_cmap(colormap);
+    if (cm < 0 || !kg_drw_src(source) || ((uint32_t) source & 3) != 0 || count < 0)
+        return 0;
+    if (kg_drw_newframe)
+        kg_drw_sync();
+    MMIO_DRW0 = (uint32_t) (ylookup[y] + columnofs[x1] - I_VideoBuffer) | (uint32_t) count << 16 | (uint32_t) cm << 25;
+    MMIO_DRW_FRAC = ((xfrac << 10) & 0xffff0000) | ((yfrac >> 6) & 0x0000ffff);
+    MMIO_DRW_STEP = ((xstep << 10) & 0xffff0000) | ((ystep >> 6) & 0x0000ffff);
+    MMIO_DRW_SPAN = (uint32_t) source - SDRAM_BASE;
+    return 1;
+}
 #endif
 
 // karabas: the pointers in locals (the byte store to dest may alias the globals: gcc reloaded
