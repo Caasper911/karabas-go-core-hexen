@@ -16,8 +16,8 @@ No WAD files in git or in the .kg: the user loads an IWAD from SD1 (OSD file ite
 Hexen demo `~/Downloads/hexen-demo/HEXEN.WAD` (1.0, 4 maps, md5 876a5a44c7b68f04b3bb9bc7a5bd69d6); the Heretic
 shareware `~/Downloads/heretic-sw/HERETIC1.WAD` for the reference build.
 
-Main open problem: Hexen is ~19 fps at 75 MHz with the 4K / 4K caches (Ф0 model, faster `hexen/r_draw.c`), the goal is 20 (PLAN.md
-"Пути к 20 fps"). Saves need more than the fixed slots of `kg_save.c` (a file per map of a hub).
+Main open problem solved in the model: I$ / D$ 16K (Ф0б) give ~23-28 fps at 75 MHz (board estimate; PLAN.md
+"Ф0б"), not yet run on a board. Saves need more than the fixed slots of `kg_save.c` (a file per map of a hub).
 
 ## Rules of the core
 

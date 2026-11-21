@@ -3,7 +3,7 @@
 /*
  doom_soc.v
 
- The Doom machine without the board glue: VexRiscv (rv32im, I$ 4K, D$ 4K, wishbone), the SDRAM
+ The Doom machine without the board glue: VexRiscv (rv32im, I$ 16K, D$ 16K, wishbone), the SDRAM
  (doom_sdram), the SRAM (doom_sram), the MMIO registers, the loader. One clock (clk, 75 MHz).
 
  Memory map of the CPU (docs/PLAN.md, src/fw/mmio.h):

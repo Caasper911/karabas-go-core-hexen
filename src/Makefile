@@ -8,7 +8,6 @@
 #
 # Inputs per board: karabas_<board>.prj (the shared modules as "../modules/rtl/...", rtl/), .xst, .ut, .ucf.
 
-ISE_SETTINGS ?= /opt/Xilinx/14.7/ISE_DS/settings64.sh
 PART = xc6slx25-ftg256-2
 BOARDS = go mini minig
 
@@ -16,7 +15,22 @@ SHELL = /bin/bash
 .SHELLFLAGS = -e -o pipefail -c
 .NOTPARALLEL:
 
+ifneq ($(filter MINGW% MSYS% CYGWIN%,$(shell uname -s)),)
+# Windows (as core-quadspeccy): ISE nt64, the 32-bit bitgen (nt64 fails on Windows 10); msys make passes no
+# TEMP / TMP / XILINXD_LICENSE_FILE to its recipes
+XILINX_DIR ?= /c/Xilinx/14.7/ISE_DS
+ISE_BIN ?= $(XILINX_DIR)/ISE/bin/nt64
+BITGEN_BIN ?= $(XILINX_DIR)/ISE/bin/nt
+ISE_TMP := $(shell cygpath -m "$(CURDIR)")/xst/tmp
+ISE_LIC ?= $(shell cygpath -m "$(XILINX_DIR)")/.xinstall/xilinx_ise.lic
+ISE_ENV = mkdir -p xst/tmp; export TEMP="$(ISE_TMP)" TMP="$(ISE_TMP)" XILINXD_LICENSE_FILE="$(ISE_LIC)"
+XIL = $(ISE_ENV) XILINX="$(XILINX_DIR)/ISE" PATH="$(ISE_BIN):$(XILINX_DIR)/ISE/lib/nt64:$(XILINX_DIR)/common/bin/nt64:$(XILINX_DIR)/common/lib/nt64:$$$$PATH";
+XIL_BITGEN = $(ISE_ENV) XILINX="$(XILINX_DIR)/ISE" PATH="$(BITGEN_BIN):$(XILINX_DIR)/ISE/lib/nt:$(XILINX_DIR)/common/bin/nt:$(XILINX_DIR)/common/lib/nt:$$$$PATH";
+else
+ISE_SETTINGS ?= /opt/Xilinx/14.7/ISE_DS/settings64.sh
 XIL = source $(ISE_SETTINGS) > /dev/null;
+XIL_BITGEN = $(XIL)
+endif
 
 KG = hexen.kg
 # make_core.py is a symlink to karabas-go-tools; without symlinks (git on Windows) a text file with its target
@@ -65,7 +79,7 @@ karabas_$(1).bin: karabas_$(1).ngc karabas_$(1).ucf karabas_$(1).ut
 	$(XIL) map -intstyle ise -p $(PART) -w $(MAP) -t $(MAP_T_$(1)) -o karabas_$(1)_map.ncd karabas_$(1).ngd karabas_$(1).pcf
 	$(XIL) par -w -intstyle ise $(PAR) karabas_$(1)_map.ncd karabas_$(1).ncd karabas_$(1).pcf
 	$(XIL) trce -intstyle ise -v 3 -s 2 -n 3 -fastpaths -xml karabas_$(1).twx karabas_$(1).ncd -o karabas_$(1).twr karabas_$(1).pcf -ucf karabas_$(1).ucf
-	$(XIL) bitgen -intstyle ise -f karabas_$(1).ut karabas_$(1).ncd
+	$(XIL_BITGEN) bitgen -intstyle ise -f karabas_$(1).ut karabas_$(1).ncd
 
 kg_$(1).stamp: karabas_$(1).bin $(JSON) roms/hexen.bin
 	$(PYTHON) tools/check_osd.py $(JSON)
