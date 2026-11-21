@@ -10,7 +10,7 @@
  doom_soc (VexRiscv + doomgeneric, docs/PLAN.md)
  with the board glue of karabas-go-modules.
 
- Clocks: one PLL, VCO 750 MHz (50 * 15): clk_sys 75 MHz (the SoC, the MCU link), clk_sdr 75 MHz at 225
+ Clocks: one PLL, VCO 875 MHz (50 / 2 * 35): clk_sys 79.545 MHz (875 / 11: the SoC, the MCU link), clk_sdr at 225
  degrees (SDR_CLK through an ODDR2, as core-archie), clk_pix 25 MHz (640 x 480 at 60 Hz, the OSD,
  HDMI), clk_hdmi / clk_hdmi_n 125 MHz (the serialiser), clk_8 8.33 MHz (FT_CLK_OUT).
 
@@ -160,15 +160,16 @@ wire [5:0] pll_clk;
 wire pll_locked;
 kg_pll #(
 	.CLKIN_PERIOD(20.0),
-	.CLKFBOUT_MULT(15),      // VCO 750 MHz
-	.CLKOUT0_DIVIDE(10),     // clk_sys 75 MHz
-	.CLKOUT1_DIVIDE(10),     // clk_sdr 75 MHz, 225 degrees
+	.DIVCLK_DIVIDE(2),       // PFD 25 MHz
+	.CLKFBOUT_MULT(35),      // VCO 875 MHz
+	.CLKOUT0_DIVIDE(11),     // clk_sys 79.545 MHz (875 / 11)
+	.CLKOUT1_DIVIDE(11),     // clk_sdr 79.545 MHz, 225 degrees
 	.CLKOUT1_PHASE(225.0),
-	.CLKOUT2_DIVIDE(30),     // clk_pix 25 MHz
-	.CLKOUT3_DIVIDE(6),      // clk_hdmi 125 MHz
-	.CLKOUT4_DIVIDE(6),      // clk_hdmi_n 125 MHz, 180 degrees
+	.CLKOUT2_DIVIDE(35),     // clk_pix 25 MHz
+	.CLKOUT3_DIVIDE(7),      // clk_hdmi 125 MHz
+	.CLKOUT4_DIVIDE(7),      // clk_hdmi_n 125 MHz, 180 degrees
 	.CLKOUT4_PHASE(180.0),
-	.CLKOUT5_DIVIDE(90)      // clk_8 8.33 MHz
+	.CLKOUT5_DIVIDE(105)     // clk_8 8.33 MHz
 ) pll (
 	.clk_in(CLK_50MHZ),
 	.rst(1'b0),
@@ -326,7 +327,7 @@ wire [31:0] aud_wd, aud_rd, aud_rd_audio, aud_rd_sd;
 // the aud_* bus of doom_soc: doom_sd for 0x80..0x9c and 0x1000..0x17fc, doom_audio for the rest
 assign aud_rd = (aud_off[13:11] == 3'b010 || aud_off[11:5] == 7'b0000100) ? aud_rd_sd : aud_rd_audio;
 
-doom_soc soc (
+doom_soc #(.CLK_NUM(10'd875), .CLK_DEN(10'd11)) soc (  // 875 / 11 MHz
 	.clk(clk_sys),
 	.reset(areset | sw_reset),
 	.ld_kind(ld_kind), .ld_slot(ld_slot), .ld_start(ld_start), .ld_active(ld_active), .ld_end(ld_end),
@@ -384,7 +385,7 @@ kg_l2_osd_overlay osd (
 // ------------------------------------------------------------------ audio
 
 wire signed [15:0] snd_l, snd_r;
-doom_audio audio (
+doom_audio #(.CLK_HZ(79545455), .OPL_STEP(33'd2684359)) audio (
 	.clk(clk_sys),
 	.reset(areset),
 	.io_we(aud_we), .io_off(aud_off), .io_wd(aud_wd), .io_rd(aud_rd_audio),
