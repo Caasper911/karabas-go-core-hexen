@@ -27,7 +27,3 @@ The rules of the other karabas-go cores apply: standard video timing with syncs 
 - One branch per phase of `docs/PLAN.md`, one PR at its end.
 - Heavy builds: Mini G only while working on one feature, all boards for a release; map with cost table 2 first.
 - Tests and sims run in seconds; longer runs only after asking.
-
-## Memory
-
-The Claude Code memory of this repo is shared with all karabas-go repos: `~/.claude/projects/<this project>/memory` is a symlink to `../karabas-go-notes` (private repo `andykarpov/karabas-go-notes`). Its `MEMORY.md` is split by repo; commit and push it after every memory change.
