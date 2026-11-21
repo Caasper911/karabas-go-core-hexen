@@ -6,6 +6,7 @@
    timer, the video and the other stubs stay here. */
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 #include "config.h"
 #include "doomtype.h"
 #include "d_event.h"
@@ -88,8 +89,19 @@ int fullscreen = 1, aspect_ratio_correct = 1;
 static uint32_t frame;
 static byte cur_pal[256 * 3];
 
+#ifdef KG_HWDRAW
+/* Ф1в: the drawer of the FPGA (hexen/r_draw.c): present when STAT has its id; then the frame is
+   accessed uncached (the drawer writes it behind the D$). kg_drw_newframe: set per frame here, the
+   drawer path checks the colormaps table once per frame. */
+int kg_hwdraw, kg_drw_newframe = 1;
+#endif
 void I_InitGraphics(void) {
     I_VideoBuffer = (byte *) FB_BASE;
+#ifdef KG_HWDRAW
+    kg_hwdraw = (MMIO_DRW_STAT >> 24) == DRW_ID && !M_ParmExists("-nohwdraw");
+    if (kg_hwdraw) I_VideoBuffer = (byte *) (SRAM_UC + FB_BASE);
+    printf("I_InitGraphics: drawer %s\n", kg_hwdraw ? "on" : "off");
+#endif
     V_RestoreBuffer(); /* V_DrawPatch draws into I_VideoBuffer from now on */
     memset(I_VideoBuffer, 0, SCREENWIDTH * SCREENHEIGHT);
     screenvisible = true;
@@ -126,6 +138,9 @@ void I_FinishUpdate(void) {
     kg_fps_overlay(I_VideoBuffer);
 #endif
     MMIO_FRAME = frame++;
+#ifdef KG_HWDRAW
+    kg_drw_newframe = 1;
+#endif
 #ifdef KG_HW
     if ((frame & 63) == 0) kg_save_show();   /* the state of the saves in DEBUG_ADDR */
 #endif

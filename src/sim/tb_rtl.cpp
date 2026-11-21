@@ -49,11 +49,14 @@ int main(int argc, char **argv) {
     uint32_t wad_size = 0;
     size_t n = fread(sram.data(), 1, SRAM_SIZE, f) + fread(sdram.data(), 1, SDRAM_SIZE, f);
     if (fread(&wad_size, 4, 1, f) != 1) wad_size = 0;
+    std::vector<uint32_t> drw_cmap(2048, 0);       // Ф1в: the colormaps of the drawer (iss appends them)
+    bool has_cmap = fread(drw_cmap.data(), 4, 2048, f) == 2048;
     fclose(f);
     fprintf(stderr, "loaded %zu bytes\n", n);
 
     Verilated::commandArgs(argc, argv);
     Vdoom_soc *t = new Vdoom_soc;
+    if (has_cmap) for (int i = 0; i < 2048; i++) t->rootp->doom_soc->__PVT__drw__DOT__cm_mem[i] = drw_cmap[i];
     t->reset = 1;
     t->ld_kind = 0; t->ld_slot = 0; t->ld_start = 0; t->ld_active = 0; t->ld_end = 0;
     t->ld_addr = 0; t->ld_data = 0; t->ld_wr = 0;
@@ -77,6 +80,7 @@ int main(int argc, char **argv) {
     int copies = 0, copy_bad = 0;
     int nframes = 0;
     uint64_t cyc = 0, last_cyc = 0;
+    uint64_t n_busy = 0, n_hold = 0, n_fence = 0, n_st[8] = {0};   // Ф1в: drawer busy, queue full holds, its states
     std::string line;
     uint8_t last_uart = 0;
     auto err = [&](const char *m, int b) {
@@ -100,6 +104,16 @@ int main(int argc, char **argv) {
             bool r = t->rootp->doom_soc->__PVT__cpu_reset;
             if (us0 && (r || was_reset)) { t->rootp->doom_soc->__PVT__us = us0; t->rootp->doom_soc->__PVT__ms = us0 / 1000; }
             was_reset = r;
+        }
+        {
+            auto *s = t->rootp->doom_soc;
+            if (s->__PVT__drw_busy) n_busy++;
+            if (s->__PVT__io_hold) n_hold++;
+            auto *c = s->cpu;   // the CPU on the SRAM (cached or 0x9...) while the drawer is busy: the fence
+            uint32_t da = c->__PVT__dBusWishbone_ADR;
+            bool sr = !(da >> 29 & 1) ? !(da >> 26 & 1) : (da >> 26 & 1);
+            if (c->__PVT__dBusWishbone_CYC && c->__PVT__dBusWishbone_STB && sr && s->__PVT__drw_busy) n_fence++;
+            n_st[s->__PVT__drw__DOT__st & 7]++;
         }
         if (prof && (cyc & 255) == 0) fprintf(prof, "%08x %08x\n", (unsigned) t->rootp->doom_soc->cpu->__PVT__decode_to_execute_PC,
                                                       (unsigned) t->rootp->doom_soc->cpu->RegFilePlugin_regFile[1]);
@@ -170,6 +184,9 @@ int main(int argc, char **argv) {
         }
         if (t->dbg_exit & 0x100) { printf("EXIT %d\n", t->dbg_exit & 0xff); done = true; }
     }
+    printf("DRAWER busy %.1f %% queue-full holds %.1f %% fence %.1f %%; states idle %.1f pix %.1f ft %.1f cm %.1f fill %.1f flat %.1f %%\n",
+           100.0 * n_busy / cyc, 100.0 * n_hold / cyc, 100.0 * n_fence / cyc, 100.0 * n_st[0] / cyc, 100.0 * n_st[1] / cyc, 100.0 * n_st[2] / cyc,
+           100.0 * n_st[3] / cyc, 100.0 * n_st[4] / cyc, 100.0 * n_st[5] / cyc);
     printf("END cycles %llu frames %d sdram errors %d dma copies %d bad %d\n", (unsigned long long)cyc, nframes, errors, copies, copy_bad);
     t->final();
     delete t;

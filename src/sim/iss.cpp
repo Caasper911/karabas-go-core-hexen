@@ -17,7 +17,8 @@
 //            Timer: US = instructions / 32 (~ CPI 2.4 at 75 MHz); the timer interrupt and the CSRs
 //            mstatus / mie / mtvec / mepc / mcause / mtval / mip, mret.
 //            [--shot F file.ppm: the frame F (FB 0x3f0000 + palette) as a PPM, repeatable]
-// prints per frame: "F,<frame>,<instr>,<im_sram>,<im_sdram>,<dm_sram>,<dm_sdram>,<st_sram>,<st_sdram>,<st8_sram>,<st8_sdram>,<fb hash>"
+// prints per frame: "F,<frame>,<instr>,<im_sram>,<im_sdram>,<dm_sram>,<dm_sdram>,<st_sram>,<st_sdram>,<st8_sram>,<st8_sdram>,<fb hash>,
+//   <uncached SRAM loads>,<drawer columns>,<drawer spans>,<drawer pixels>" (Ф1в: SRAM 0x9xxxxxxx uncached, the drawer at MMIO C0..DC)
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -49,7 +50,33 @@ struct Cache {
 };
 
 static uint64_t misaligned = 0;
-struct Cnt { uint64_t instr = 0, im[2] = {0, 0}, dm[2] = {0, 0}, st[2] = {0, 0}, st8[2] = {0, 0}; };
+struct Cnt { uint64_t instr = 0, im[2] = {0, 0}, dm[2] = {0, 0}, st[2] = {0, 0}, st8[2] = {0, 0},
+             uc = 0, dcol = 0, dspan = 0, dpx = 0; };   // uncached SRAM accesses; the drawer: commands, pixels
+
+// Ф1в: the drawer of doom_draw.v (functional, at once): MMIO C0..DC (src/fw/mmio.h). The frame is the
+// work buffer FB 0x3f0000; the colormaps table (COLORMAP / FOGMAP, 8704 bytes) is a copy uploaded by the CPU.
+struct Drawer {
+    uint32_t w0 = 0, frac = 0, step = 0, cm_adr = 0;
+    uint8_t cmap[16384] = {0};
+    void column(uint32_t src) {           // src: SDRAM byte offset of the texture column
+        uint32_t off = w0 & 0xffff, n = ((w0 >> 16) & 0x1ff) + 1, cm = ((w0 >> 25) & 0x3f) << 8, f = frac;
+        for (uint32_t i = 0; i < n; i++) {
+            uint8_t t = sdram[(src + ((f >> 16) & 127)) & (SDRAM_SIZE - 1)];
+            if (off < 64000) sram[0x3f0000 + off] = cmap[(cm + t) & 16383];
+            off += 320; f += step;
+        }
+    }
+    void span(uint32_t src) {             // src: SDRAM byte offset of the 64x64 flat
+        uint32_t off = w0 & 0xffff, n = ((w0 >> 16) & 0x1ff) + 1, cm = ((w0 >> 25) & 0x3f) << 8, p = frac;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t spot = ((p >> 4) & 0x0fc0) | (p >> 26);
+            uint8_t t = sdram[(src + spot) & (SDRAM_SIZE - 1)];
+            if (off < 64000) sram[0x3f0000 + off] = cmap[(cm + t) & 16383];
+            off += 1; p += step;
+        }
+    }
+};
+static Drawer drw;
 
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s fw.bin --org A [--wad f] [--max Minstr] [--icache B] [--dcache B] [--prof f] [--prof-from F]\n", argv[0]); return 2; }
@@ -144,7 +171,13 @@ int main(int argc, char **argv) {
         exit(3);
     };
     auto ld = [&](uint32_t a, int sz) -> uint32_t {
+        if ((a & 0xf0000000u) == 0x90000000u) {          // Ф1в: the SRAM uncached (the frame)
+            uint32_t v = 0; tot.uc++;
+            memcpy(&v, &sram[a & (SRAM_SIZE - 1)], sz);
+            return v;
+        }
         if (a & 0x80000000u) {
+            if ((a & 0x3fff) == 0xdc) return 0xd7000000u; // drawer: id, idle
             if ((a & 0x3fff) >= 0x1000 && (a & 0x3fff) < 0x1800) return sdbuf[((a & 0x3fff) - 0x1000) >> 2];
             if ((a & 0x3fff) >= 0x100) return 0;
             switch (a & 0xff) {
@@ -170,8 +203,23 @@ int main(int argc, char **argv) {
         return v;
     };
     auto st = [&](uint32_t a, uint32_t v, int sz) {
+        if ((a & 0xf0000000u) == 0x90000000u) {          // Ф1в: the SRAM uncached (the frame)
+            tot.st[0]++; if (sz < 4) tot.st8[0]++;
+            memcpy(&sram[a & (SRAM_SIZE - 1)], &v, sz);
+            return;
+        }
         if (a & 0x80000000u) {
             uint32_t o = a & 0x3fff;
+            switch (o) {                                  // Ф1в: the drawer
+            case 0xc0: drw.w0 = v; return;
+            case 0xc4: drw.frac = v; return;
+            case 0xc8: drw.step = v; return;
+            case 0xcc: drw.column(v); tot.dcol++; tot.dpx += ((drw.w0 >> 16) & 0x1ff) + 1; return;
+            case 0xd0: drw.span(v); tot.dspan++; tot.dpx += ((drw.w0 >> 16) & 0x1ff) + 1; return;
+            case 0xd4: memcpy(&drw.cmap[drw.cm_adr & 16380], &v, 4); drw.cm_adr += 4; return;
+            case 0xd8: drw.cm_adr = v; return;
+            case 0xdc: return;                            // the flat cache: forget it
+            }
             if (o >= 0x2000) { ring[(o - 0x2000) >> 2] = v; return; }
             if (o >= 0x1000 && o < 0x1800) { sdbuf[(o - 0x1000) >> 2] = v & 0xff; return; }
             if (o == 0x80) { sd_sector = v; return; }
@@ -200,12 +248,14 @@ int main(int argc, char **argv) {
                     fclose(pp);
                 }
                 tot.instr = ninstr;
-                printf("F,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%08x\n", v,
+                printf("F,%u,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%08x,%llu,%llu,%llu,%llu\n", v,
                        (unsigned long long)(tot.instr - last.instr),
                        (unsigned long long)(tot.im[0] - last.im[0]), (unsigned long long)(tot.im[1] - last.im[1]),
                        (unsigned long long)(tot.dm[0] - last.dm[0]), (unsigned long long)(tot.dm[1] - last.dm[1]),
                        (unsigned long long)(tot.st[0] - last.st[0]), (unsigned long long)(tot.st[1] - last.st[1]),
-                       (unsigned long long)(tot.st8[0] - last.st8[0]), (unsigned long long)(tot.st8[1] - last.st8[1]), h);
+                       (unsigned long long)(tot.st8[0] - last.st8[0]), (unsigned long long)(tot.st8[1] - last.st8[1]), h,
+                       (unsigned long long)(tot.uc - last.uc), (unsigned long long)(tot.dcol - last.dcol),
+                       (unsigned long long)(tot.dspan - last.dspan), (unsigned long long)(tot.dpx - last.dpx));
                 last = tot;
                 if (prof_from >= 0 && (int)v + 1 >= prof_from) sampling = true;
                 if ((int)v == dump_at) dump_now = true;
@@ -358,6 +408,7 @@ int main(int argc, char **argv) {
             fwrite(sram.data(), 1, SRAM_SIZE, d);
             fwrite(sdram.data(), 1, SDRAM_SIZE, d);
             fwrite(&wad_size, 4, 1, d);
+            fwrite(drw.cmap, 1, 8192, d);   // Ф1в: the colormaps copy of the drawer (tb_rtl loads it)
             fclose(d);
             printf("DUMP %s frame %d pc %08x us %llu\n", dump_path, dump_at, pc, (unsigned long long)(ninstr / 32));
             done = true;

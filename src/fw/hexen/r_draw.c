@@ -56,6 +56,53 @@ byte *dc_source;                // first pixel in a column (possibly virtual)
 
 int dccount;                    // just for profiling
 
+#ifdef KG_HWDRAW
+// karabas (Ф1в): the drawer of the FPGA (doom_draw.v, src/fw/mmio.h) takes the plain columns and the
+// spans: a command of 4 MMIO writes, drawn while the CPU goes on. Its colormap index is the offset in
+// colormaps (COLORMAP / FOGMAP, 34 tables of 256): other colormaps (none known) and sources out of the
+// SDRAM stay with the CPU. colormaps is one buffer reloaded per level: its sum is checked once per
+// frame (kg_drw_newframe, kg_htic.c) and the copy of the drawer uploaded when it changed (the
+// drawer idle first). The TL / translated columns, the sky and the rest stay with the CPU: its SRAM
+// accesses wait for the drawer in the FPGA.
+#include "mmio.h"
+extern int kg_hwdraw, kg_drw_newframe;
+#define KG_CMAPS_BYTES (34 * 256)        // summed: COLORMAP / FOGMAP
+#define KG_DRW_CMAPS_BYTES (32 * 256)    // in the drawer: tables 0..31 (32, 33: invulnerability, CPU)
+
+static void kg_drw_sync(void)
+{
+    static uint32_t sum_loaded;
+    static int loaded;
+    const uint32_t *w = (const uint32_t *) colormaps;
+    uint32_t sum = 0;
+    int i;
+
+    kg_drw_newframe = 0;
+    for (i = 0; i < KG_CMAPS_BYTES / 4; i++)
+        sum = (sum << 1 | sum >> 31) + w[i];
+    if (loaded && sum == sum_loaded)
+        return;
+    while (MMIO_DRW_STAT & 1) {}
+    MMIO_DRW_CMADR = 0;
+    for (i = 0; i < KG_DRW_CMAPS_BYTES / 4; i++)
+        MMIO_DRW_CMAP = w[i];
+    sum_loaded = sum;
+    loaded = 1;
+}
+
+// the colormap index of a colormap pointer, -1: not in colormaps
+static inline int kg_drw_cmap(const byte *cm)
+{
+    uint32_t d = (uint32_t) (cm - (const byte *) colormaps);
+    return (d < KG_DRW_CMAPS_BYTES && (d & 255) == 0) ? (int) (d >> 8) : -1;
+}
+
+static inline int kg_drw_src(const byte *s)
+{
+    return (uint32_t) s - SDRAM_BASE < 0x02000000u;
+}
+#endif
+
 // karabas: the pointers in locals (the byte store to dest may alias the globals: gcc reloaded
 // dc_source / dc_colormap at every pixel); same pixels as upstream. Unrolled by 2 it was slower
 // (demo1 4K / 4K: more I$ misses ate the 0.06 M instructions per frame).
@@ -73,6 +120,24 @@ void R_DrawColumn(void)
 #ifdef RANGECHECK
     if ((unsigned) dc_x >= SCREENWIDTH || dc_yl < 0 || dc_yh >= SCREENHEIGHT)
         I_Error("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+#endif
+
+#ifdef KG_HWDRAW
+    if (kg_hwdraw)
+    {
+        int cm = kg_drw_cmap(dc_colormap);
+        if (cm >= 0 && kg_drw_src(dc_source))
+        {
+            if (kg_drw_newframe)
+                kg_drw_sync();
+            MMIO_DRW0 = (uint32_t) (ylookup[dc_yl] + columnofs[dc_x] - I_VideoBuffer)
+                      | (uint32_t) count << 16 | (uint32_t) cm << 25;
+            MMIO_DRW_FRAC = dc_texturemid + (dc_yl - centery) * dc_iscale;
+            MMIO_DRW_STEP = dc_iscale;
+            MMIO_DRW_COL = (uint32_t) dc_source - SDRAM_BASE;
+            return;
+        }
+    }
 #endif
 
     dest = ylookup[dc_yl] + columnofs[dc_x];
@@ -400,6 +465,22 @@ void R_DrawSpan(void)
 
     dest = ylookup[ds_y] + columnofs[ds_x1];
     count = ds_x2 - ds_x1;
+#ifdef KG_HWDRAW
+    if (kg_hwdraw)
+    {
+        int cm = kg_drw_cmap(colormap);
+        if (cm >= 0 && kg_drw_src(source) && ((uint32_t) source & 3) == 0 && count >= 0)
+        {
+            if (kg_drw_newframe)
+                kg_drw_sync();
+            MMIO_DRW0 = (uint32_t) (dest - I_VideoBuffer) | (uint32_t) count << 16 | (uint32_t) cm << 25;
+            MMIO_DRW_FRAC = position;
+            MMIO_DRW_STEP = step;
+            MMIO_DRW_SPAN = (uint32_t) source - SDRAM_BASE;
+            return;
+        }
+    }
+#endif
     do
     {
         *dest++ = colormap[source[((position >> 4) & 0x0fc0) | (position >> 26)]];
