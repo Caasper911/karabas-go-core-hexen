@@ -32,11 +32,16 @@ void kg_htic_chat_macros(void) {
     for (int i = 0; i < 10; i++) if (!chat_macros[i]) chat_macros[i] = "";
 }
 
+/* the game of the build: heretic, or hexen (the Makefile target hexen sets -DKG_GAME) */
+#ifndef KG_GAME
+#define KG_GAME "heretic"
+#endif
+
 #ifndef KG_HW
 /* ---- main (src/i_main.c) ---- */
 int main(void) {
     /* one writable string, split in place at the spaces */
-    static char args[] = "heretic -iwad heretic.wad -mb " MB " " ARGS;
+    static char args[] = KG_GAME " -iwad " KG_GAME ".wad -mb " MB " " ARGS;
     static char *av[32];
     int n = 0;
     char *s = args;
@@ -54,7 +59,9 @@ int main(void) {
     D_DoomMain();
     return 0;
 }
-void I_StartTic(void) {}
+/* the bench scenario of a game (hexen/kg_hexen_bench.c), called every loop of the tic code */
+void kg_bench_tic(void) __attribute__((weak));
+void I_StartTic(void) { if (kg_bench_tic) kg_bench_tic(); }
 #else
 void kg_save_show(void);
 #endif
