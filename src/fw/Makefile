@@ -205,12 +205,15 @@ $(HH)/heretic-hw.bin: $(HH)/heretic-hw.elf
 # htic/kg_htic.c with KG_GAME "hexen" + hexen/kg_hexen_stubs.c (startup screen 640x480, CD music) +
 # hexen/kg_hexen_bench.c (zone peak; ARGS="-warp 1 -kgbench": the saves of a hub);
 # -fcommon: src/hexen defines some globals in two files (demoextend, ...).
-# HXDRAW kg (default): hexen/r_draw.c, the faster column / span drawers; up: the upstream r_draw.c.
+# HXDRAW kg (default): hexen/r_draw.c, the faster column / span drawers; up: the upstream r_draw.c;
+# hw: hexen/r_draw.c with KG_HWDRAW (Ф1в: the drawer of the FPGA, the ISS models it).
 HX      := build-hexen-$(ARCH)$(subst -,,$(OPT))
 HXDRAW  ?= kg
 HEXEN   := $(notdir $(basename $(wildcard $(CHOC)/src/hexen/*.c)))
-HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(filter-out $(if $(filter kg,$(HXDRAW)),r_draw),$(HEXEN))))) $(HX)/w_file_kg.o \
-           $(HX)/kg_hexen_stubs.o $(HX)/kg_hexen_bench.o $(if $(filter kg,$(HXDRAW)),$(HX)/kg_r_draw.o)
+HXOBJ   := $(addprefix $(HX)/,$(addsuffix .o,$(CHOC_COMMON) $(addprefix x_,$(filter-out $(if $(filter kg hw,$(HXDRAW)),r_draw),$(HEXEN))))) $(HX)/w_file_kg.o \
+           $(HX)/kg_hexen_stubs.o $(HX)/kg_hexen_bench.o $(if $(filter kg,$(HXDRAW)),$(HX)/kg_r_draw.o) \
+           $(if $(filter hw,$(HXDRAW)),$(HX)/kg_r_draw_hw.o)
+HXHWDRAW := $(if $(filter hw,$(HXDRAW)),-DKG_HWDRAW)
 HXCFLAGS := $(ABI) $(OPT) -std=gnu11 -g -fcommon -ffunction-sections -fdata-sections -w -D_DEFAULT_SOURCE \
            '-DKG_GAME="hexen"' -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src
 $(HX):
@@ -226,12 +229,14 @@ $(HX)/kg_hexen_%.o: hexen/kg_hexen_%.c | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -c $< -o $@
 $(HX)/kg_r_draw.o: hexen/r_draw.c htic/kg_htic.h | $(HX)
 	$(CROSS)gcc $(HXCFLAGS) -I$(CHOC)/src/hexen -c $< -o $@
+$(HX)/kg_r_draw_hw.o: hexen/r_draw.c htic/kg_htic.h mmio.h | $(HX)
+	$(CROSS)gcc $(HXCFLAGS) -DKG_HWDRAW -I$(CHOC)/src/hexen -c $< -o $@
 HXOPTS := $(HX)/opts-$(HXDRAW)-$(MB)-$(subst $(eval) ,_,$(ARGS))
 $(HXOPTS): | $(HX)
 	rm -f $(HX)/opts-*; touch $@
 hexen: $(HX)/hexen-$(MB).bin
 $(HX)/hexen-$(MB).elf: $(HXOBJ) htic/kg_htic.c syscalls.c crt0.S mmio.h $(B)/link-sdram.ld $(HXOPTS)
-	$(CROSS)gcc $(HXCFLAGS) '-DMB="$(MB)"' '-DARGS="$(ARGS)"' -c htic/kg_htic.c -o $(HX)/kg_htic.o
+	$(CROSS)gcc $(HXCFLAGS) $(HXHWDRAW) '-DMB="$(MB)"' '-DARGS="$(ARGS)"' -c htic/kg_htic.c -o $(HX)/kg_htic.o
 	$(CROSS)gcc $(HXCFLAGS) -c syscalls.c -o $(HX)/syscalls.o
 	$(CROSS)gcc $(ABI) -c crt0.S -o $(HX)/crt0.o
 	$(CROSS)gcc $(LDFLAGS) -T $(B)/link-sdram.ld -Wl,-Map,$(HX)/hexen-$(MB).map -o $@ \
@@ -246,7 +251,7 @@ $(HX)/hexen-$(MB).bin: $(HX)/hexen-$(MB).elf
 # (the savegames are RAM files until Ф2); hexen/r_draw.c as HXDRAW=kg: build-hexen-hw-$(ARCH)$(OPT)/
 XH      := build-hexen-hw-$(ARCH)$(subst -,,$(OPT))
 XHCFLAGS := -march=$(ARCH)_zicsr -mabi=ilp32 $(OPT) -std=gnu11 -g -fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -ffunction-sections -fdata-sections -w \
-           -D_DEFAULT_SOURCE -DFEATURE_SOUND -DKG_HW -DKG_HERETIC -DKG_HEXEN '-DKG_GAME="hexen"' \
+           -D_DEFAULT_SOURCE -DFEATURE_SOUND -DKG_HW -DKG_HERETIC -DKG_HEXEN -DKG_HWDRAW '-DKG_GAME="hexen"' \
            -include htic/kg_htic.h -Ihtic -I. -Icompat -I$(CHOC)/src -I$(CHOC)/opl
 XHOBJ   := $(addprefix $(XH)/,$(addsuffix .o,$(CHOC_COMMON) i_oplmusic midifile mus2mid opl opl_queue \
            $(addprefix x_,$(filter-out r_draw,$(HEXEN))))) \

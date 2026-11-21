@@ -8,6 +8,7 @@
 
  Memory map of the CPU (docs/PLAN.md, src/fw/mmio.h):
    0x00000000 SRAM 4 MB (the frame 0x3f0000)       0x10000000 SDRAM 32 MB (program 0, WAD 0xc00000)
+   0x90000000 SRAM uncached (Ф1в: the frame read behind the drawer)
    0x80000000 MMIO (uncached: VexRiscv IO range = bit 31), word registers:
      00 W  UART: a byte of the console (kept as dbg_uart for the debug output)
      04 W  FRAME: a frame is drawn: copied by DMA (doom_sram) into the display buffer not shown
@@ -26,10 +27,14 @@
      50 R  SW: the OSD switches (kg_mcu2 SW: FPS 7..0, Music 15..8, Controls 23..16, Mouse move 31..24)
      60..70, 2000..3ffc: doom_audio (OPL3, MIDI, the SFX ring)
      80..90, 1000..17fc: doom_sd (the save file, its sector buffer)
+     c0..dc: doom_draw (Ф1в, the drawer of the view: columns and spans into the work frame)
      400..7fc W  PAL: palette entry ((a - 400) / 4) = 0x00RRGGBB
    MOUSE: bits 31..24 buttons, 23..12 dy sum, 11..0 dx sum (signed 12 bit, saturated; reading clears).
- Instruction fetch: the SDRAM only (the program). The I and D buses share the SDRAM (D first), the
- owner keeps it to the last ack of its transaction (CTI 010 = more beats).
+ Instruction fetch: the SDRAM only (the program). The I and D buses and the drawer share the SDRAM (D
+ first, then I, then the drawer), the owner keeps it to the last ack of its transaction (CTI 010 = more
+ beats). The drawer (doom_draw) writes the work frame through its own SRAM port; while it is busy the CPU
+ accesses to the SRAM wait (the order of the frame: the CPU draws over it later), and so does the frame
+ copy of a FRAME write.
 
  Loader (kg_mcu2 LD_*, while the CPU is in reset): kind 0 (the ROMs of the .kg) to the SDRAM from 0,
  kind 2 slot 0 (the WAD item) to SDRAM 0xc00000; a byte per SDRAM write (byte select), ld_ready low
@@ -178,14 +183,22 @@ reg timer_irq = 1'b0;
 wire d_req = d_cyc & d_stb;
 wire copy_pend_w, copy_run_w, dma_busy_w;
 wire i_req = i_cyc & i_stb;
-wire d_io = d_adr[29];                      // 0x80000000
-wire d_sd = ~d_io & d_adr[26];              // 0x10000000
-wire d_sr = ~d_io & ~d_adr[26];
+wire d_io = d_adr[29] & ~d_adr[26];        // 0x80000000
+wire d_uc = d_adr[29] & d_adr[26];          // 0x90000000: the SRAM uncached
+wire d_sd = ~d_adr[29] & d_adr[26];         // 0x10000000
+wire d_sr = (~d_adr[29] & ~d_adr[26]) | d_uc;
 
 // ------------------------------------------------------------------ SDRAM and its owner
 
-localparam [1:0] O_NONE = 2'd0, O_D = 2'd1, O_I = 2'd2, O_LD = 2'd3;
-reg [1:0] own = O_NONE;
+localparam [2:0] O_NONE = 3'd0, O_D = 3'd1, O_I = 3'd2, O_LD = 3'd3, O_DR = 3'd4;
+reg [2:0] own = O_NONE;
+// the drawer
+wire drw_sd_cyc, drw_busy, drw_push_wait, drw_sr_req, drw_sr_ack;
+wire [24:2] drw_sd_adr;
+wire [2:0] drw_sd_cti;
+wire [20:0] drw_sr_adr;
+wire [1:0] drw_sr_sel;
+wire [15:0] drw_sr_dat;
 wire sd_ack;
 wire [31:0] sd_dat;
 reg sd_cyc, sd_we;
@@ -200,6 +213,7 @@ always @(*) begin
 	O_D: begin sd_cyc = d_req; sd_we = d_we; sd_sel = d_sel; sd_adr = d_adr[22:0]; sd_cti = d_cti; sd_wdat = d_dat_o; end
 	O_I: begin sd_cyc = i_req; sd_we = 1'b0; sd_sel = 4'hF; sd_adr = i_adr[22:0]; sd_cti = i_cti; end
 	O_LD: begin sd_cyc = ld_pend; sd_we = 1'b1; sd_sel = 4'b0001 << ld_a[1:0]; sd_adr = ld_a[24:2]; sd_cti = 3'd0; sd_wdat = {4{ld_d}}; end
+	O_DR: begin sd_cyc = drw_sd_cyc; sd_we = 1'b0; sd_sel = 4'hF; sd_adr = drw_sd_adr; sd_cti = drw_sd_cti; end
 	default: ;
 	endcase
 end
@@ -212,6 +226,7 @@ always @(posedge clk) begin
 	end else if (own == O_NONE) begin
 		if (d_req && d_sd) own <= O_D;
 		else if (i_req) own <= O_I;
+		else if (drw_sd_cyc) own <= O_DR;
 	end else if (sd_ack && sd_cti != 3'b010)
 		own <= O_NONE;
 end
@@ -235,7 +250,7 @@ wire [31:0] sr_dat;
 localparam [20:0] FB_WORK = 21'h1f8000, FB_DISP0 = 21'h1f0000, FB_DISP1 = 21'h1e8000;
 reg copy_pend = 1'b0, copy_run = 1'b0, dma_req = 1'b0;
 wire dma_busy;
-wire sr_ok = ~cpu_reset & ~copy_pend;
+wire sr_ok = ~cpu_reset & ~copy_pend & ~drw_busy;
 assign copy_pend_w = copy_pend;
 assign copy_run_w = copy_run;
 assign dma_busy_w = dma_busy;
@@ -244,6 +259,7 @@ doom_sram sram (
 	.clk(clk),
 	.wb_cyc(d_req & d_sr & sr_ok), .wb_stb(d_req & d_sr & sr_ok), .wb_we(d_we), .wb_sel(d_sel),
 	.wb_adr(d_adr[19:0]), .wb_cti(d_cti), .wb_dat_i(d_dat_o), .wb_dat_o(sr_dat), .wb_ack(sr_ack),
+	.drw_req(drw_sr_req), .drw_adr(drw_sr_adr), .drw_sel(drw_sr_sel), .drw_dat(drw_sr_dat), .drw_ack(drw_sr_ack),
 	.vid_req(vid_req), .vid_adr(vid_adr), .vid_len(vid_len), .vid_we(vid_we), .vid_wa(vid_wa),
 	.vid_wd(vid_wd), .vid_busy(vid_busy),
 	.dma_req(dma_req), .dma_src(FB_WORK), .dma_dst(disp_front ? FB_DISP0 : FB_DISP1), .dma_len(16'd32000),
@@ -269,6 +285,16 @@ wire io_low = io_off14[13:12] == 2'b00;   // 0x0000..0x0fff: the registers here 
 wire aud_sel = io_off14[13] || io_off14[13:11] == 3'b010 ||
 	(io_off14[13:12] == 2'b00 && (io_off14[11:4] == 8'h06 || io_off14[11:4] == 8'h07 || io_off14[11:4] == 8'h08 || io_off14[11:4] == 8'h09));
 assign aud_we = d_req && d_io && !io_ack && !cpu_reset && d_we && aud_sel;
+// the drawer registers c0..dc; a queueing write (cc, d0) waits while its queue is full
+wire drw_sel_io = io_low && io_off[11:8] == 4'h0 && io_off[7:5] == 3'b110;
+wire io_hold = drw_sel_io && d_we && (io_off[7:0] == 8'hcc || io_off[7:0] == 8'hd0) && drw_push_wait;
+wire drw_we = d_req && d_io && !io_ack && !cpu_reset && d_we && drw_sel_io && !io_hold;
+doom_draw drw (
+	.clk(clk), .reset(cpu_reset),
+	.io_we(drw_we), .io_off(io_off[7:0]), .io_wd(d_dat_o), .push_wait(drw_push_wait), .busy(drw_busy),
+	.sd_cyc(drw_sd_cyc), .sd_adr(drw_sd_adr), .sd_cti(drw_sd_cti), .sd_ack((own == O_DR) & sd_ack), .sd_dat(sd_dat),
+	.sr_req(drw_sr_req), .sr_adr(drw_sr_adr), .sr_sel(drw_sr_sel), .sr_dat(drw_sr_dat), .sr_ack(drw_sr_ack)
+);
 assign aud_off = io_off14;
 assign aud_wd = d_dat_o;
 reg [31:0] us = 32'd0, tcmp = 32'd0;
@@ -278,7 +304,7 @@ reg ten = 1'b0;
 
 always @(posedge clk) begin
 	dma_req <= 1'b0;
-	if (copy_pend && !copy_run && !dma_busy && !dma_req && disp_shown == disp_front) begin
+	if (copy_pend && !copy_run && !dma_busy && !dma_req && !drw_busy && disp_shown == disp_front) begin
 		dma_req <= 1'b1;
 		copy_run <= 1'b1;
 	end
@@ -330,7 +356,7 @@ always @(posedge clk) begin
 		ms_btn <= ms_b;
 	end
 
-	if (d_req && d_io && !io_ack && !cpu_reset) begin
+	if (d_req && d_io && !io_ack && !cpu_reset && !io_hold) begin
 		io_ack <= 1'b1;
 		if (d_we) begin
 			if (!io_low || aud_sel) begin
@@ -371,6 +397,7 @@ always @(posedge clk) begin
 				8'h38: io_dat <= { joy_r, joy_l };
 				8'h40: io_dat <= us;
 				8'h50: io_dat <= sw;
+				8'hdc: io_dat <= { 8'hd7, 23'd0, drw_busy };
 				default: io_dat <= aud_sel ? aud_rd : 32'd0;
 			endcase
 		end

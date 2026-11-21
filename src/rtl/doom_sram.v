@@ -12,6 +12,8 @@
  - video: vid_req (a pulse) asks vid_len halfwords from halfword address vid_adr; they come out as
    vid_we / vid_wa (0..vid_len-1) / vid_wd. Served between CPU transactions, VID_CHUNK halfwords at a
    time, so that the CPU waits a little only; vid_busy until done.
+ - drawer (Ф1в, doom_draw): drw_req asks a write of the lanes drw_sel of halfword drw_adr, acked by
+   drw_ack; after the CPU (which waits while the drawer is busy: doom_soc), before nothing else.
  - DMA: dma_req (a pulse) copies dma_len halfwords from dma_src to dma_dst (the frame drawn by the CPU
    into a buffer of the video, docs/PLAN.md Ф1): in runs of DMA_RUN halfwords, the video first between
    runs; the CPU waits until the copy is done (the frame must not change under it). dma_busy until done.
@@ -47,6 +49,13 @@ module doom_sram #(
 	output reg [8:0] vid_wa = 9'd0,
 	output reg [15:0] vid_wd = 16'd0,
 	output wire vid_busy,
+
+	// drawer: a write of the lanes of a halfword
+	input wire drw_req,
+	input wire [20:0] drw_adr,
+	input wire [1:0] drw_sel,
+	input wire [15:0] drw_dat,
+	output reg drw_ack = 1'b0,
 
 	// DMA (halfword addresses)
 	input wire dma_req,
@@ -86,6 +95,7 @@ reg [21:2] q_adr = 20'd0;
 reg [31:0] q_dat = 32'd0;
 reg [3:0] q_sel = 4'd0;
 reg q_hi = 1'b0;                  // write: the halfword being written
+reg q_drw = 1'b0;                 // write: the drawer's (acked on drw_ack)
 reg [4:0] rd_n = 5'd0;            // read: halfwords done
 reg [4:0] rd_last = 5'd0;         // read: halfwords of the request (2 or 16)
 reg ph = 1'b0;                    // read: the second clock of a halfword
@@ -109,6 +119,7 @@ assign dma_busy = dma_pend;
 
 always @(posedge clk) begin
 	wb_ack <= 1'b0;
+	drw_ack <= 1'b0;
 	vid_we <= 1'b0;
 	md_in <= MD_I;
 	if (dma_req && !dma_pend && dma_len != 16'd0) begin
@@ -142,6 +153,7 @@ always @(posedge clk) begin
 			st <= S_DR;
 		end else if (wb_req) begin
 			cpu_last <= 1'b1;
+			q_drw <= 1'b0;
 			q_adr <= wb_adr;
 			q_dat <= wb_dat_i;
 			q_sel <= wb_sel;
@@ -165,6 +177,17 @@ always @(posedge clk) begin
 				rd_last <= (wb_cti == 3'b010) ? 5'd16 : 5'd2;
 				st <= S_RD;
 			end
+		end else if (drw_req && !drw_ack) begin
+			// the drawer: one halfword (S_W1..S_W3 with q_hi 0 and lanes 3..2 empty)
+			cpu_last <= 1'b1;
+			q_drw <= 1'b1;
+			q_hi <= 1'b0;
+			q_sel <= { 2'b00, drw_sel };
+			ma_r <= drw_adr;
+			md_out <= drw_dat;
+			md_oe_n <= 16'h0000;
+			mrd_r <= 2'b11;
+			st <= S_W1;
 		end
 	end
 
@@ -204,7 +227,7 @@ always @(posedge clk) begin
 			md_out <= q_dat[31:16];
 			st <= S_W1;
 		end else begin
-			wb_ack <= 1'b1;
+			if (q_drw) drw_ack <= 1'b1; else wb_ack <= 1'b1;
 			md_oe_n <= 16'hFFFF;
 			mrd_r <= 2'b00;
 			st <= S_IDLE;

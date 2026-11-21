@@ -29,3 +29,22 @@
 #define MMIO_SFX(i)   MMIO_REG(0x2000 + 4 * (i)) /* write: ring entry i = { right16, left16 } */
 #define SFX_RING      2048
 #define SFX_RATE      11025
+
+/* Ф1в: the drawer (doom_draw.v): columns and spans of the view drawn by the FPGA into the frame FB_BASE.
+   DRW0 = offset in the frame (15..0) | pixels - 1 (24..16) | colormap index (30..25); FRAC / STEP: the
+   column frac and step (16.16), or the span position and step (x 6.10 high, y 6.10 low); a write of COL
+   (the column source) or SPAN (the 64x64 flat) as an SDRAM byte offset queues the command. CMADR / CMAP:
+   the upload of the colormaps table (COLORMAP / FOGMAP, 8704 bytes; CMAP auto-increments). STAT: bits
+   31..24 = DRW_ID when present, bit 0 busy; a write forgets the cached flat. The CPU accesses to the
+   SRAM wait while the drawer is busy (the order of the frame); the frame is read through SRAM_UC
+   (uncached: the drawer writes behind the D$). */
+#define MMIO_DRW0      MMIO_REG(0xc0)
+#define MMIO_DRW_FRAC  MMIO_REG(0xc4)
+#define MMIO_DRW_STEP  MMIO_REG(0xc8)
+#define MMIO_DRW_COL   MMIO_REG(0xcc)
+#define MMIO_DRW_SPAN  MMIO_REG(0xd0)
+#define MMIO_DRW_CMAP  MMIO_REG(0xd4)
+#define MMIO_DRW_CMADR MMIO_REG(0xd8)
+#define MMIO_DRW_STAT  MMIO_REG(0xdc)
+#define DRW_ID         0xd7u
+#define SRAM_UC        0x90000000u  /* the SRAM, uncached (bit 31: the IO range of VexRiscv) */
